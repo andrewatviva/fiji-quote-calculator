@@ -545,18 +545,20 @@ function handleAcceptanceSubmit() {
         const processed = {};
         rawData.forEach(item => {
             if (item.Hotel) {
-            	processed[item.Hotel] = {
-                	hotelInfo: item.HotelInfo || '',
-                	resortSpecificInfo: item.Resort_Specific_Info || '',
-                	childPolicy: item.ChildPolicy || '',
-                	mealPlanInfo: item.MealPlanInfo || '',
-                	cancellation: item.CancellationConditions || '',
-                	contractLink: item.Contract_Link || ''
-            	};
+                const existing = processed[item.Hotel] || {};
+                processed[item.Hotel] = {
+                    hotelInfo: item.HotelInfo || existing.hotelInfo || '',
+                    resortSpecificInfo: item.Resort_Specific_Info || existing.resortSpecificInfo || '',
+                    childPolicy: item.ChildPolicy || existing.childPolicy || '',
+                    mealPlanInfo: item.MealPlanInfo || existing.mealPlanInfo || '',
+                    cancellation: item.CancellationConditions || existing.cancellation || '',
+                    contractLink: item.Contract_Link || existing.contractLink || '',
+                    imageLink: item.ImageLink || existing.imageLink || ''
+                };
             }
         });
         return processed;
-	}
+    }
  
 function processMealPlansData(rawData) {
         const processed = {};
@@ -3270,25 +3272,25 @@ async function generatePDF(consultant, itemOrder) {
         let passengerIntroHtml = '';
         if (saleType === 'B2B') {
             passengerIntroHtml = `
-            <div style="text-align: right; background: #F8FAFC; padding: 15px; border-radius: 8px; border-left: 4px solid #0A2540;">
-            	<p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748B;">Prepared for Agency</p>
-            	<p style="margin: 4px 0 0; font-family: 'Georgia', serif; font-size: 16px; color: #0A2540;">${travelAgencyName || 'N/A'}</p>
+            <div style="text-align: right; padding: 14px 18px; border-radius: 8px; background: #F8FAFC;">
+            	<p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #94A3B8;">Prepared for Agency</p>
+            	<p style="margin: 5px 0 0; font-size: 15px; font-weight: 700; color: #0A2540;">${travelAgencyName || 'N/A'}</p>
             	<p style="margin: 2px 0 0; font-size: 12px; color: #475569;">Attn: ${travelAgentName || 'N/A'}</p>
             	<div style="margin-top: 8px; border-top: 1px solid #E2E8F0; padding-top: 8px;">
-                	<p style="margin: 0; font-size: 11px; color: #64748B;">Passengers:</p>
-                	<p style="margin: 2px 0 0; font-size: 12px; font-weight: bold; color: #0A2540;">${passengerNamesList.join(', ')}</p>
+                	<p style="margin: 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;">Passengers</p>
+                	<p style="margin: 3px 0 0; font-size: 12px; font-weight: 600; color: #0A2540;">${passengerNamesList.join(', ')}</p>
             	</div>
             </div>`;
         } else {
             passengerIntroHtml = `
-            <div style="text-align: right;">
-            	<p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #64748B;">Prepared Exclusively For</p>
-            	<p style="margin: 4px 0 0; font-family: 'Georgia', serif; font-size: 18px; color: #0A2540;">${passengerNamesList.join(', ')}</p>
+            <div style="text-align: right; padding: 14px 18px; border-radius: 8px; background: #F8FAFC;">
+            	<p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #94A3B8;">Prepared Exclusively For</p>
+            	<p style="margin: 5px 0 0; font-size: 17px; font-weight: 700; color: #0A2540;">${passengerNamesList.join(', ')}</p>
             </div>`;
         }
  
         const consultantNotes = ui.inputs.consultantNotes.value.trim();
-        let quoteMessageHtml = `<div style="margin-top: 4mm; font-size: 13px; line-height: 1.7; color: #334155;">`;
+        let quoteMessageHtml = `<div style="margin-top: 4mm; margin-bottom: 2mm; font-size: 13px; line-height: 1.7; color: #334155;">`;
         if (consultantNotes) {
             const notesWithBreaks = consultantNotes.replace(/</g, "<").replace(/>/g, ">").replace(/\n/g, '<br>');
             // Elegant card for consultant notes
@@ -3302,6 +3304,32 @@ async function generatePDF(consultant, itemOrder) {
         }
         quoteMessageHtml += `</div>`;
  
+        const VIVA_LOGO_URL = state.masterCalcs?.VIVA_LOGO_URL || '';
+        let logoBase64 = null;
+        const verifiedHotelImages = {};
+
+        await Promise.all([
+            new Promise(resolve => {
+                google.script.run
+                    .withSuccessHandler(b => { logoBase64 = b || null; resolve(); })
+                    .withFailureHandler(() => resolve())
+                    .getImageAsBase64(VIVA_LOGO_URL);
+            }),
+            ...Array.from(itemOrder)
+                .filter(i => i.dataset.itemType === 'hotel-checkin')
+                .map(item => {
+                    const d = JSON.parse(item.dataset.itemData);
+                    const imageLink = state.conditionsData[d.hotelName]?.imageLink;
+                    if (!imageLink) { verifiedHotelImages[d.hotelName] = null; return Promise.resolve(); }
+                    return new Promise(resolve => {
+                        google.script.run
+                            .withSuccessHandler(base64 => { verifiedHotelImages[d.hotelName] = base64 || null; resolve(); })
+                            .withFailureHandler(() => { verifiedHotelImages[d.hotelName] = null; resolve(); })
+                            .getImageAsBase64(imageLink);
+                    });
+                })
+        ]);
+
         let itineraryItemsHtml = '';
         itemOrder.forEach(item => {
             const eventData = JSON.parse(item.dataset.itemData);
@@ -3311,13 +3339,12 @@ async function generatePDF(consultant, itemOrder) {
             	case 'flight': itemHtml = getPdfHtmlForFlight(eventData, numAdults + numChildren); break;
             	case 'transfer': itemHtml = getPdfHtmlForTransfer(eventData, numAdults + numChildren); break;
             	case 'tour': itemHtml = getPdfHtmlForTour(eventData, numAdults + numChildren); break;
-            	case 'hotel-checkin': itemHtml = getPdfHtmlForHotelCheckin(eventData); break;
+            	case 'hotel-checkin': itemHtml = getPdfHtmlForHotelCheckin(eventData, verifiedHotelImages); break;
             	case 'hotel-checkout': itemHtml = getPdfHtmlForHotelCheckout(eventData); break;
             }
-            // Original clean wrapper for itinerary items
             itineraryItemsHtml += `
-            <div class="pdf-section" style="padding: 0 15mm; margin-bottom: 5mm; page-break-inside: avoid;">
-            	<div style="background: #ffffff; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
+            <div class="pdf-section" style="padding: 0 15mm; margin-bottom: 4mm; page-break-inside: avoid;">
+            	<div style="background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.07);">
                 	${itemHtml}
             	</div>
             </div>`;
@@ -3325,6 +3352,7 @@ async function generatePDF(consultant, itemOrder) {
  
         // --- REVISED PRICE BOX HTML (Luxury Styling) ---
         let priceBoxHtml = '';
+        let hasSpecialOffer = false;
         const isInstantPurchase = document.getElementById('instant-purchase-toggle')?.checked;
  
         if (isInstantPurchase) {
@@ -3334,7 +3362,7 @@ async function generatePDF(consultant, itemOrder) {
  
             priceBoxHtml = `
             <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 5px;">
-            	<h3 style="text-align: center; color: #0A2540; font-family: 'Georgia', serif; font-size: 20px; font-style: italic; margin-bottom: 20px;">Select Your Booking Option</h3>
+            	<h3 style="text-align: center; color: #0A2540; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px;">Select Your Booking Option</h3>
             	
             	<table style="width: 100%; border-collapse: separate; border-spacing: 15px 0;">
                 	<tr>
@@ -3397,21 +3425,23 @@ async function generatePDF(consultant, itemOrder) {
             const priceBeforeDiscounts = finalPrice + discountAmount;
  
             if (totalSavings > 0) {
+            	hasSpecialOffer = true;
             	priceBoxHtml = `
-            	<p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; color: #64748B;">Regular Price: <span style="text-decoration: line-through;">AUD $${formatNumberWithCommas(priceBeforeSavings.toFixed(0))}</span></p>
-            	<p style="font-size: 13px; color: #10B981; margin-top: 0.5rem; font-weight: bold;">Special Offer Savings: -AUD $${formatNumberWithCommas(totalSavings.toFixed(0))}</p>
-            	${discountAmount > 0 ? `<p style="font-size: 13px; color: #10B981; margin-top: 0.25rem;">Additional Discount: -AUD $${formatNumberWithCommas(discountAmount.toFixed(0))}${discountReason ? ` (${discountReason})` : ''}</p>` : ''}
-            	<p style="font-size: 42px; font-family: 'Georgia', serif; font-weight: normal; margin: 0.5rem 0; color: #0A2540;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>
-            	<div style="display: inline-block; background-color: #FEF3C7; border: 1px solid #FDE68A; color: #B45309; padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; margin-top: 0.5rem;">Total Savings: AUD $${formatNumberWithCommas((totalSavings + discountAmount).toFixed(0))}</div>`;
+            	<p style="margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #94A3B8;">Regular Price</p>
+            	<p style="margin: 0 0 10px; font-size: 16px; color: #94A3B8; text-decoration: line-through;">AUD $${formatNumberWithCommas(priceBeforeSavings.toFixed(0))}</p>
+            	<p style="margin: 0 0 4px; font-size: 14px; color: #059669; font-weight: 700;">&#10024; Special Offer Savings: -AUD $${formatNumberWithCommas(totalSavings.toFixed(0))}</p>
+            	${discountAmount > 0 ? `<p style="margin: 0 0 10px; font-size: 13px; color: #059669; font-weight: 600;">+ Additional Discount: -AUD $${formatNumberWithCommas(discountAmount.toFixed(0))}${discountReason ? ` (${discountReason})` : ''}</p>` : '<p style="margin: 0 0 10px; font-size: 4px;">&nbsp;</p>'}
+            	<p style="font-size: 48px; font-weight: 900; letter-spacing: -2px; margin: 0 0 12px; color: #0A2540; line-height: 1.1;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>
+            	<p style="margin: 0 0 8px; font-size: 16px; font-weight: 800; color: #059669;">&#127881; YOU SAVE AUD $${formatNumberWithCommas((totalSavings + discountAmount).toFixed(0))}!</p>
+            	<p style="margin: 0; font-size: 11px; color: #DC2626; font-weight: 700; font-style: italic;">&#9889; Limited availability &#8212; book now to secure this exclusive rate</p>`;
             } else if (discountAmount > 0) {
             	priceBoxHtml = `
             	<p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; color: #64748B;">Original Price: <span style="text-decoration: line-through;">AUD $${formatNumberWithCommas(priceBeforeDiscounts.toFixed(0))}</span></p>
             	<p style="font-size: 13px; color: #10B981; margin-top: 0.5rem; font-weight: bold;">Discount Applied: -AUD $${formatNumberWithCommas(discountAmount.toFixed(0))}${discountReason ? ` (${discountReason})` : ''}</p>
-            	<p style="font-size: 42px; font-family: 'Georgia', serif; font-weight: normal; margin: 0.5rem 0; color: #0A2540;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>`;
+            	<p style="font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 0.5rem 0; color: #0A2540;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>`;
             } else {
             	priceBoxHtml = `
-            	<p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; color: #64748B;">Total Investment</p>
-            	<p style="font-size: 42px; font-family: 'Georgia', serif; font-weight: normal; margin: 0.5rem 0; color: #0A2540;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>`;
+            	<p style="font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 0 0 0.5rem; color: #0A2540;">AUD $${formatNumberWithCommas(finalPrice.toFixed(0))}</p>`;
             }
         }
        
@@ -3424,11 +3454,11 @@ async function generatePDF(consultant, itemOrder) {
             const agentFlightCommission = parseFloat(ui.inputs.b2b.flightCommissionAmount.value) || 0;
             const agentTotalCommission = agentLandCommission + agentFlightCommission;
             const netPayable = finalPriceForComm - agentTotalCommission;
-            priceBoxHtml += `<div style="border-top: 1px dashed #CBD5E1; margin-top: 6mm; padding-top: 4mm; text-align: right;"><p style="font-size: 14px; margin: 0 0 0.5rem 0; color: #475569;">Agent Commission: <strong style="color: #10B981;">AUD $${formatNumberWithCommas(agentTotalCommission.toFixed(2))}</strong></p><p style="font-size: 16px; font-family: 'Georgia', serif; margin: 0; color: #0A2540;">Net Payable: <strong>AUD $${formatNumberWithCommas(netPayable.toFixed(2))}</strong></p></div>`;
+            priceBoxHtml += `<div style="border-top: 1px dashed #CBD5E1; margin-top: 6mm; padding-top: 4mm; text-align: right;"><p style="font-size: 14px; margin: 0 0 0.5rem 0; color: #475569;">Agent Commission: <strong style="color: #10B981;">AUD $${formatNumberWithCommas(agentTotalCommission.toFixed(2))}</strong></p><p style="font-size: 16px; font-weight: 700; margin: 0; color: #0A2540;">Net Payable: <strong>AUD $${formatNumberWithCommas(netPayable.toFixed(2))}</strong></p></div>`;
         }
  
         priceBoxHtml += `<p style="font-size: 11px; color: #64748B; margin-top: 1rem;">Price is in Australian Dollars and includes all taxes.</p>`;
-        priceBoxHtml += `<p style="font-size: 11px; color: #0A2540; margin-top: 0.5rem; font-weight: bold; background: #F8FAFC; padding: 10px; border-radius: 6px;">In acceptance of this quote please provide all passengers names in full as they appear on passports and dates of birth.</p>`;
+        priceBoxHtml += `<p style="font-size: 11px; color: #0A2540; margin-top: 0.5rem; font-weight: 600; background: #EFF6FF; border-left: 3px solid #0284C7; padding: 10px 12px; border-radius: 0 6px 6px 0; text-align: left;">In acceptance of this quote please provide all passengers names in full as they appear on passports and dates of birth.</p>`;
  
         const depositAmount = parseFloat(ui.inputs.paymentSchedule.depositAmount.value) || 0;
         const depositDueDate = ui.inputs.paymentSchedule.depositDueDate.value;
@@ -3443,7 +3473,7 @@ async function generatePDF(consultant, itemOrder) {
         if (depositAmount > 0 || flightPaymentAmount > 0 || finalPaymentAmount > 0) {
             paymentScheduleHtml = `
             <div style="margin-top: 8mm; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden;">
-            	<h3 style="font-family: 'Georgia', serif; font-size: 16px; color: #0A2540; margin: 0; padding: 15px 15px 10px; background: white; border-bottom: 1px solid #E2E8F0;">${paymentScheduleTitle}</h3>
+            	<h3 style="font-size: 11px; font-weight: 700; color: #0A2540; text-transform: uppercase; letter-spacing: 1px; margin: 0; padding: 15px 15px 10px; background: white; border-bottom: 1px solid #E2E8F0;">${paymentScheduleTitle}</h3>
             	<table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">
                 	<thead>
                     	<tr>
@@ -3463,7 +3493,7 @@ async function generatePDF(consultant, itemOrder) {
         const quoteTitle = saleType === 'B2B' ? 'Wholesale Travel Quotation' : 'Travel Quotation';
        
         // Premium Wedding Styling (Updated with "Wedding of:")
-        let weddingTitleHtml = isWedding && weddingName ? `<p style="font-family: 'Georgia', serif; font-size: 20px; font-style: italic; margin: 8px 0 0; color: #D4AF37; letter-spacing: 0.5px;">Wedding of: ${weddingName}</p>` : '';
+        let weddingTitleHtml = isWedding && weddingName ? `<p style="font-size: 17px; font-weight: 500; font-style: italic; margin: 8px 0 0; color: #D4AF37; letter-spacing: 0.5px;">Wedding of: ${weddingName}</p>` : '';
  
         // --- ASSEMBLE THE HTML WITH PREMIUM STYLING ---
         ui.pdfContent.innerHTML = `
@@ -3472,7 +3502,7 @@ async function generatePDF(consultant, itemOrder) {
             <!-- Top Bar (Logo & Details) -->
             <div class="pdf-section" id="pdf-header-top" style="padding: 12mm 15mm 8mm 15mm;">
             	<div style="display: flex; justify-content: space-between; align-items: center;">
-                	<img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQscvyid2gnP2Hbe_EZt0qFTV_OJbPugtjc3g&s" style="height: 45px; object-fit: contain;" crossorigin="anonymous" />
+                	${logoBase64 ? `<img src="${logoBase64}" style="height: 60px; object-fit: contain;" />` : `<span style="font-size: 20px; font-weight: 800; color: #0A2540; letter-spacing: -0.5px;">Viva Travel</span>`}
                 	<div style="text-align: right; font-size: 10px; line-height: 1.6;">
                     	${quoteIdHtml}
                     	<p style="margin: 0; color: #64748B;">Date: <strong style="color: #0A2540;">${moment().format('D MMMM YYYY')}</strong></p>
@@ -3482,39 +3512,48 @@ async function generatePDF(consultant, itemOrder) {
  
             <!-- Hero Image Header -->
             <div class="pdf-section" id="pdf-hero" style="padding: 0 15mm;">
-            	<div style="position: relative; height: 130px; border-radius: 12px; overflow: hidden; background-color: #0A2540;">
-                	<!-- Reliable high-res placeholder from Unsplash for Fiji/Tropical -->
-                	<img src="https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6;" crossorigin="anonymous" />
-                	<div style="position: absolute; bottom: 20px; left: 25px; z-index: 2;">
-                    	<h1 style="font-family: 'Georgia', serif; font-size: 28px; font-weight: normal; color: #ffffff; margin: 0; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">${quoteTitle}</h1>
-                        ${weddingTitleHtml.replace('color: #D4AF37;', 'color: #FDE047; text-shadow: 0 2px 4px rgba(0,0,0,0.5);')}
+            	<div style="position: relative; height: 160px; border-radius: 14px; overflow: hidden; background-color: #0A2540;">
+                	<img src="https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55;" crossorigin="anonymous" />
+                	<div style="position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,37,64,0.85) 0%, rgba(10,37,64,0.1) 65%);"></div>
+                	<div style="position: absolute; bottom: 28px; left: 30px; z-index: 2;">
+                    	<p style="margin: 0 0 8px; font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 3px;">Viva Travel</p>
+                    	<h1 style="font-size: 30px; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -0.5px; line-height: 1.15;">${quoteTitle}</h1>
+                        ${weddingTitleHtml.replace('color: #D4AF37;', 'color: #FDE68A;')}
                 	</div>
             	</div>
             </div>
  
             <div class="pdf-section" id="pdf-intro" style="padding: 8mm 15mm 0 15mm;">
-            	<div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                	<div style="background: #F8FAFC; padding: 15px; border-radius: 8px; border-left: 4px solid #D4AF37;">
-                    	<p style="margin:0; font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 1px;">Your Consultant</p>
-                    	<p style="margin: 4px 0 0; font-family: 'Georgia', serif; font-size: 16px; color: #0A2540;">${consultant.Consultant_Name}</p>
+            	<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                	<div style="padding: 14px 18px; border-radius: 8px; background: #F8FAFC;">
+                    	<p style="margin: 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 1.5px;">Your Consultant</p>
+                    	<p style="margin: 5px 0 0; font-size: 15px; font-weight: 700; color: #0A2540;">${consultant.Consultant_Name}</p>
                     	<p style="margin: 2px 0 0; font-size: 12px; color: #0284C7;">${consultant.Consultant_Email}</p>
                 	</div>
                 	${passengerIntroHtml}
             	</div>
             </div>
            
-            <div class="pdf-section" id="pdf-notes" style="padding: 6mm 15mm 0 15mm;">${quoteMessageHtml}</div>
+            <div class="pdf-section" id="pdf-notes" style="padding: 6mm 15mm 5mm 15mm;">${quoteMessageHtml}</div>
            
-            <!-- Original Clean Itinerary Header -->
             <div class="pdf-section" id="pdf-itinerary-header" style="padding: 10mm 15mm 4mm 15mm;">
-            	<h2 style="font-family: 'Georgia', serif; font-size: 22px; font-weight: normal; color: #0A2540; margin: 0; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">Your Fiji Itinerary</h2>
+            	<div style="display: flex; align-items: center; gap: 14px;">
+                	<p style="margin: 0; font-size: 10px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 2.5px; white-space: nowrap;">Your Itinerary</p>
+                	<div style="flex: 1; height: 1px; background: #E2E8F0;"></div>
+            	</div>
             </div>
            
             <div id="pdf-itinerary-items">${itineraryItemsHtml}</div>
            
             <div class="pdf-section" id="pdf-pricebox" style="padding: 10mm 15mm 0 15mm;">
-            	<div style="background: #ffffff; border: 2px solid #F1F5F9; box-shadow: 0 4px 15px rgba(0,0,0,0.03); padding: 8mm; border-radius: 12px; text-align: center;">
-                	${priceBoxHtml}
+            	<div style="background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(10,37,64,0.12); border: 1px solid ${hasSpecialOffer ? '#D4AF37' : '#E2E8F0'};">
+                	${hasSpecialOffer
+                    	? `<div style="background: linear-gradient(135deg, #D4AF37, #C9A227); padding: 5mm 8mm; text-align: center;"><p style="margin: 0; font-size: 13px; font-weight: 800; color: #0A2540; text-transform: uppercase; letter-spacing: 2px;">&#127881; Exclusive Special Offer Applied &#127881;</p></div>`
+                    	: `<div style="background: #0A2540; padding: 5mm 8mm; text-align: center;"><p style="margin: 0; font-size: 11px; font-weight: 700; color: #D4AF37; text-transform: uppercase; letter-spacing: 2.5px;">Your Investment</p></div>`
+                	}
+                	<div style="padding: 8mm; text-align: center;">
+                    	${priceBoxHtml}
+                	</div>
             	</div>
             </div>
            
@@ -3525,10 +3564,20 @@ async function generatePDF(consultant, itemOrder) {
             	<p style="margin:0; font-size: 4px;">&nbsp;</p>
             </div>
            
-            <div id="pdf-footer" style="padding: 8mm 15mm 15mm 15mm;">
-            	<div style="text-align: center; font-size: 10px; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 15px;">
-                	<p style="margin: 0 0 5px 0;"><strong style="color: #0A2540;">Viva Travel</strong> &nbsp;|&nbsp; 1300 84 82 82 &nbsp;|&nbsp; info@travelwithviva.com &nbsp;|&nbsp; www.vivatravel.com.au</p>
+            <div id="pdf-footer" style="padding: 0; background: #0A2540;">
+            	<div style="height: 3px; background: #D4AF37;"></div>
+            	<div style="padding: 8mm 15mm 12mm; text-align: center; font-size: 10px; color: rgba(255,255,255,0.65);">
+                	<p style="margin: 0 0 5px 0;"><strong style="color: #D4AF37;">Viva Travel</strong> &nbsp;|&nbsp; 1300 84 82 82 &nbsp;|&nbsp; info@travelwithviva.com &nbsp;|&nbsp; www.vivatravel.au</p>
                 	<p style="margin: 0;">This quote is valid for 48 hours and is subject to availability at time of booking.</p>
+            	</div>
+            </div>
+            <div id="pdf-page-header" style="width: 210mm; background: #ffffff; border-bottom: 3px solid #D4AF37;">
+            	<div style="padding: 8px 15mm; display: flex; justify-content: space-between; align-items: center;">
+                	${logoBase64 ? `<img src="${logoBase64}" style="height: 60px; object-fit: contain;" />` : `<span style="font-size: 20px; font-weight: 800; color: #0A2540; letter-spacing: -0.5px;">Viva Travel</span>`}
+                	<div style="text-align: right; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                    	<p style="margin: 0; font-size: 9px; font-weight: 700; color: #0A2540; text-transform: uppercase; letter-spacing: 1.5px;">${quoteTitle}</p>
+                    	<p style="margin: 2px 0 0; font-size: 8px; color: #64748B;">${state.currentQuoteId ? 'Ref: ' + state.currentQuoteId + ' &nbsp;|&nbsp; ' : ''}${moment().format('D MMMM YYYY')}</p>
+                	</div>
             	</div>
             </div>
         </div>`;
@@ -3541,22 +3590,31 @@ async function generatePDF(consultant, itemOrder) {
             const pdfHeight = pdf.internal.pageSize.getHeight();
             const margin = 15;
             const contentWidth = pdfWidth - (margin * 2);
+            let contentStartY = margin;
             let y = margin;
  
             const footerElement = document.getElementById('pdf-footer');
-            const footerCanvas = await html2canvas(footerElement, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const footerCanvas = await html2canvas(footerElement, { scale: 2, useCORS: true, backgroundColor: '#0A2540' });
             const footerImgData = footerCanvas.toDataURL('image/jpeg', 0.9);
             const footerImgHeight = (footerCanvas.height * pdfWidth) / footerCanvas.width;
-            const pageBreakThreshold = pdfHeight - footerImgHeight - 5;
- 
+            const pageBreakThreshold = pdfHeight - footerImgHeight - 15;
+
+            const headerElement = document.getElementById('pdf-page-header');
+            const headerCanvas = await html2canvas(headerElement, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const headerImgData = headerCanvas.toDataURL('image/jpeg', 0.9);
+            const headerImgHeight = (headerCanvas.height * pdfWidth) / headerCanvas.width;
+            contentStartY = headerImgHeight + 8;
+            y = contentStartY;
+
             const addImageSection = async (element) => {
             	if (!element) return;
             	const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
             	const imgData = canvas.toDataURL('image/jpeg', 0.9);
             	const imgHeight = (canvas.height * contentWidth) / canvas.width;
-            	if (y > margin && y + imgHeight > pageBreakThreshold) {
+            	const fitsOnNewPage = imgHeight <= (pageBreakThreshold - contentStartY);
+            	if (fitsOnNewPage && y + imgHeight > pageBreakThreshold) {
                 	pdf.addPage();
-                	y = margin;
+                	y = contentStartY;
             	}
             	pdf.addImage(imgData, 'JPEG', margin, y, contentWidth, imgHeight);
             	y += imgHeight;
@@ -3567,7 +3625,7 @@ async function generatePDF(consultant, itemOrder) {
             	
             	// Use Times for titles (maps to Georgia vibe in native jsPDF) and Helvetica for body
             	pdf.setFontSize(isTitle ? 14 : size);
-            	pdf.setFont(isTitle ? 'times' : 'helvetica', isTitle ? 'bolditalic' : style);
+            	pdf.setFont('helvetica', isTitle ? 'bold' : style);
             	
             	pdf.setTextColor(isTitle ? '#0A2540' : color); // Override color if title
             	
@@ -3576,7 +3634,7 @@ async function generatePDF(consultant, itemOrder) {
             	lines.forEach(line => {
                 	if (y + lineHeight > pageBreakThreshold) {
                     	pdf.addPage();
-                    	y = margin;
+                    	y = contentStartY;
                 	}
                 	const trimmedLine = line.trim();
                 	const targetUrl = url || (trimmedLine.startsWith('http') ? trimmedLine : null);
@@ -3593,7 +3651,6 @@ async function generatePDF(consultant, itemOrder) {
             };
  
             // Render Sections
-            await addImageSection(document.querySelector('#pdf-header-top'));
             await addImageSection(document.querySelector('#pdf-hero'));
             await addImageSection(document.querySelector('#pdf-intro'));
             await addImageSection(document.querySelector('#pdf-notes'));
@@ -3697,30 +3754,23 @@ async function generatePDF(consultant, itemOrder) {
             }
  
             if (TERMS_AND_CONDITIONS) {
-            	addTextSection('Terms & Conditions', { isTitle: true, spaceAfter: 3 });
-            	addTextSection('Important: Please read our full Terms and Conditions before making payment. Your payment confirms that you have read, understood, and agree to be bound by these Terms and Conditions.', { spaceAfter: 3 });
-            	addTextSection('Click here to view our Terms & Conditions', { url: TERMS_AND_CONDITIONS });
+                addTextSection('Terms & Conditions', { isTitle: true, spaceAfter: 3 });
+                addTextSection('Important: Please read our full Terms and Conditions before making payment. Your payment confirms that you have read, understood, and agree to be bound by these Terms and Conditions.', { spaceAfter: 3 });
+                addTextSection('Click here to view our Terms & Conditions', { url: TERMS_AND_CONDITIONS.trim() });
             }
  
             const pageCount = pdf.internal.getNumberOfPages();
             for (let i = 1; i <= pageCount; i++) {
             	pdf.setPage(i);
+            	// Branded header (logo + quote ref) at top of every page
+            	pdf.addImage(headerImgData, 'JPEG', 0, 0, pdfWidth, headerImgHeight);
+            	// Dark footer
             	pdf.addImage(footerImgData, 'JPEG', 0, pdfHeight - footerImgHeight, pdfWidth, footerImgHeight);
+            	// Page number in white for dark footer
             	pdf.setFontSize(8);
-            	pdf.setTextColor(148, 163, 184); // Slate-400
+            	pdf.setTextColor(255, 255, 255);
             	pdf.setFont('helvetica', 'normal');
-            	pdf.text(`Page ${i} of ${pageCount}`, pdfWidth / 2, pdfHeight - 6, { align: 'center' });
- 
-            	// --- LUXURY DOUBLE PAGE BORDER ---
-            	// Outer Deep Navy Border (Now with rounded corners)
-            	pdf.setDrawColor(10, 37, 64);
-            	pdf.setLineWidth(0.6);
-            	pdf.roundedRect(6, 6, pdfWidth - 12, pdfHeight - 12, 4, 4, 'S');
- 
-            	// Inner Delicate Gold Border (Now with rounded corners)
-            	pdf.setDrawColor(212, 175, 55);
-            	pdf.setLineWidth(0.2);
-            	pdf.roundedRect(7.5, 7.5, pdfWidth - 15, pdfHeight - 15, 3, 3, 'S');
+            	pdf.text(`${i} / ${pageCount}`, pdfWidth - margin, pdfHeight - footerImgHeight + 4, { align: 'right' });
             }
  
             pdf.save(state.currentQuoteId ? `VivaTravel_Quote_${state.currentQuoteId}.pdf` : 'VivaTravel_Quote.pdf');
@@ -3886,33 +3936,30 @@ async function generatePDF(consultant, itemOrder) {
  
     function getPdfHtmlForFlight(data, totalPassengers) {
         let detailsHtml = '';
-        if (data.flightClass || data.baggage) detailsHtml = `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>${[data.flightClass ? `Class: ${data.flightClass}` : '', data.baggage ? `Baggage: ${data.baggage}` : ''].filter(Boolean).join(' | ')}</i></p>`;
-        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Passengers: ${data.passengers.join(', ')}</i></p>`;
-    	return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="https://img.icons8.com/ios/50/000000/airplane-mode-on.png" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Flight: ${data.number || 'TBA'}</p><p style="margin:4px 0 0; font-size: 14px; color: #555;">${data.depCity || 'TBA'} (${data.depTime || 'TBA'}) → ${data.arrCity || 'TBA'} (${data.arrTime || 'TBA'})</p>${detailsHtml}</td></tr></tbody></table>`;
-	}
+        if (data.flightClass || data.baggage) detailsHtml = `<p style="margin:4px 0 0; font-size: 11px; color: #64748B;">${[data.flightClass ? `Class: ${data.flightClass}` : '', data.baggage ? `Baggage: ${data.baggage}` : ''].filter(Boolean).join(' &middot; ')}</p>`;
+        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Passengers: ${data.passengers.join(', ')}</p>`;
+        return `<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #0284C7; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #0284C7; text-transform: uppercase; letter-spacing: 1px;">Flight &middot; ${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 15px; font-weight: 700; color: #0A2540;">${data.number || 'TBA'}</p><p style="margin: 4px 0 0; font-size: 13px; color: #334155;">${data.depCity || 'TBA'} (${data.depTime || '--:--'}) &rarr; ${data.arrCity || 'TBA'} (${data.arrTime || '--:--'})</p>${detailsHtml}</div></div>`;
+    }
  
     function getPdfHtmlForTransfer(data, totalPassengers) {
         let detailsHtml = '';
-        if (data.inclusions) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Inclusions: ${data.inclusions}</i></p>`;
-        if (data.instructions) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Instructions: ${data.instructions}</i></p>`;
-        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Passengers: ${data.passengers.join(', ')}</i></p>`;
-        let icon = "https://img.icons8.com/ios/50/000000/car.png";
-        if (data.type === 'Coach') icon = "https://img.icons8.com/ios/50/000000/bus.png";
-        else if (data.type === 'Launch' || data.type === 'Water Taxi') icon = "https://img.icons8.com/ios/50/000000/ferry.png";
-        else if (data.type === 'Helicopter') icon = "https://img.icons8.com/ios/50/000000/helicopter.png";
-        return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="${icon}" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Transfer: ${data.type || 'TBA'}</p><p style="margin:4px 0 0; font-size: 14px; color: #555;">From ${data.depPoint || 'TBA'} (${data.depTime || 'TBA'}) to ${data.arrPoint || 'TBA'} (${data.arrTime || 'TBA'})</p>${detailsHtml}</td></tr></tbody></table>`;
-	}
+        if (data.inclusions) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Inclusions: ${data.inclusions}</p>`;
+        if (data.instructions) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Instructions: ${data.instructions}</p>`;
+        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Passengers: ${data.passengers.join(', ')}</p>`;
+        let accentColor = '#0891B2';
+        if (data.type === 'Launch' || data.type === 'Water Taxi') accentColor = '#0284C7';
+        return `<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: ${accentColor}; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: ${accentColor}; text-transform: uppercase; letter-spacing: 1px;">Transfer &middot; ${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 15px; font-weight: 700; color: #0A2540;">${data.type || 'Transfer'}</p><p style="margin: 4px 0 0; font-size: 13px; color: #334155;">From ${data.depPoint || 'TBA'} (${data.depTime || '--:--'}) &rarr; ${data.arrPoint || 'TBA'} (${data.arrTime || '--:--'})</p>${detailsHtml}</div></div>`;
+    }
  
     function getPdfHtmlForTour(data, totalPassengers) {
         let detailsHtml = '';
-        if (data.description) detailsHtml += `<p style="margin:4px 0 0; font-size: 14px; color: #555;">${data.description.replace(/\n/g, '<br>')}</p>`;
-        if (data.inclusions) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Inclusions: ${data.inclusions}</i></p>`;
-        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Passengers: ${data.passengers.join(', ')}</i></p>`;
-        const icon = "https://img.icons8.com/ios/50/000000/map-marker.png";
-        return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="${icon}" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Tour: ${data.name || 'TBA'}</p>${detailsHtml}</td></tr></tbody></table>`;
-	}
+        if (data.description) detailsHtml += `<p style="margin:4px 0 0; font-size: 13px; color: #334155;">${data.description.replace(/\n/g, '<br>')}</p>`;
+        if (data.inclusions) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Inclusions: ${data.inclusions}</p>`;
+        if (data.passengers && data.passengers.length > 0 && data.passengers.length < totalPassengers) detailsHtml += `<p style="margin:4px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Passengers: ${data.passengers.join(', ')}</p>`;
+        return `<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #059669; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: 1px;">Tour &middot; ${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 15px; font-weight: 700; color: #0A2540;">${data.name || 'TBA'}</p>${detailsHtml}</div></div>`;
+    }
  
-    function getPdfHtmlForHotelCheckin(data) {
+    function getPdfHtmlForHotelCheckin(data, verifiedHotelImages = {}) {
         const hotelIndex = data.index;
         const selectedSpecial = data.selectedSpecial;
         const isThisHotelDynamic = !document.getElementById(`dynamic-rate-container-${hotelIndex}`).classList.contains('hidden');
@@ -3935,32 +3982,33 @@ async function generatePDF(consultant, itemOrder) {
                 	});
             	roomInclusionsText = Array.from(uniqueInclusions).join('; ');
             }
-            roomDetailsHtml += `<p style="margin: 4px 0 0; font-size: 12px; color: #555;"><strong>Room ${r}:</strong> ${roomType}</p>`;
-            if (selectedSpecial && selectedSpecial.RoomType === roomType) roomDetailsHtml += `<p style="margin: 4px 0 0; font-size: 12px; color: #16a34a;"><strong>Special Offer:</strong> ${selectedSpecial.SpecialName}</p>`;
-            if (roomInclusionsText) roomDetailsHtml += `<p style="margin: 4px 0 0; font-size: 12px; color: #555;"><i>Inclusions: ${roomInclusionsText}</i></p>`;
+            roomDetailsHtml += `<div style="margin-top: 8px; padding: 8px 10px; background: #F8FAFC; border-radius: 6px;"><p style="margin: 0; font-size: 12px; font-weight: 600; color: #0A2540;">Room ${r}: ${roomType}</p>`;
+            if (selectedSpecial && selectedSpecial.RoomType === roomType) roomDetailsHtml += `<p style="margin: 3px 0 0; font-size: 11px; color: #16a34a; font-weight: 600;">&#10003; Special Offer: ${selectedSpecial.SpecialName}</p>`;
+            if (roomInclusionsText) roomDetailsHtml += `<p style="margin: 3px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Inclusions: ${roomInclusionsText}</p>`;
             const mealPlanSelect = document.getElementById(`meal-plan-select-${hotelIndex}-${r}`);
             if (mealPlanSelect && mealPlanSelect.value) {
             	const numMealAdults = parseInt(document.getElementById(`meal-plan-adults-${hotelIndex}-${r}`).value) || 0;
             	const numMealChildren = parseInt(document.getElementById(`meal-plan-children-${hotelIndex}-${r}`).value) || 0;
-            	if (numMealAdults > 0 || numMealChildren > 0) roomDetailsHtml += `<p style="margin: 4px 0 0; font-size: 12px; color: #555;"><strong>Meal Plan:</strong> ${mealPlanSelect.value} (for ${numMealAdults}A & ${numMealChildren}C)</p>`;
+            	if (numMealAdults > 0 || numMealChildren > 0) roomDetailsHtml += `<p style="margin: 3px 0 0; font-size: 11px; color: #64748B;">Meal Plan: ${mealPlanSelect.value} (${numMealAdults}A &amp; ${numMealChildren}C)</p>`;
             }
+            roomDetailsHtml += `</div>`;
         }
-        return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="https://img.icons8.com/ios/50/000000/bed.png" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.checkin, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Check-in to ${data.hotelName}</p><p style="margin:4px 0 0; font-size: 14px; color: #555;">Your accommodation for ${nights} night(s).</p>${roomDetailsHtml}</td></tr></tbody></table>`;
-	}
+        const imageLink = verifiedHotelImages[data.hotelName] || null;
+        const imageBannerHtml = imageLink ? `<div style="height: 160px; overflow: hidden;"><img src="${imageLink}" style="width: 100%; height: 100%; object-fit: cover; display: block;"/></div>` : '';
+        return `<div>${imageBannerHtml}<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #0A2540; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #0A2540; text-transform: uppercase; letter-spacing: 1px;">Check-in &middot; ${moment(data.checkin, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 17px; font-weight: 700; color: #0A2540;">${data.hotelName}</p><p style="margin: 4px 0 0; font-size: 13px; color: #64748B;">${nights} Night${nights !== 1 ? 's' : ''} &middot; Check-out ${moment(data.checkout, 'DD-MM-YYYY').format('ddd, D MMMM')}</p>${roomDetailsHtml}</div></div></div>`;
+    }
  
     function getPdfHtmlForHotelCheckout(data) {
-        return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="https://img.icons8.com/ios/50/000000/bed.png" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Check-out from ${data.hotelName}</p></td></tr></tbody></table>`;
-	}
+        return `<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #475569; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 1px;">Check-out &middot; ${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 15px; font-weight: 700; color: #0A2540;">${data.hotelName}</p><p style="margin: 4px 0 0; font-size: 12px; color: #94A3B8; font-style: italic;">We hope you enjoyed your stay.</p></div></div>`;
+    }
         function getPdfHtmlForWeddingPackage(data) {
         let detailsHtml = '';
         if (data.inclusions) {
-            const inclusionsWithBreaks = data.inclusions.replace(/</g, "<").replace(/>/g, ">").replace(/\n/g, '<br>');
-            detailsHtml += `<p style="margin:4px 0 0; font-size: 12px; color: #555;"><i>Inclusions: ${inclusionsWithBreaks}</i></p>`;
+            const inclusionsWithBreaks = data.inclusions.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, '<br>');
+            detailsHtml += `<p style="margin:6px 0 0; font-size: 11px; color: #64748B; font-style: italic;">Inclusions: ${inclusionsWithBreaks}</p>`;
         }
-        // Using a heart icon for the wedding event
-        const icon = "https://img.icons8.com/ios/50/000000/like.png";
-        return `<table style="width: 100%; border-collapse: collapse; border-spacing: 0;"><tbody><tr><td style="width: 50px; text-align: center; vertical-align: top; padding: 12px 0; position: relative;"><div style="position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid #e2e8f0; margin-left: -1px;"></div><div style="background-color: #fce7f3; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; position: relative; z-index: 1;"><img src="${icon}" style="width: 18px; height: 18px;" /></div></td><td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #e2e8f0;"><p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px; color: #555;">${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin:0; font-weight: 600; font-size: 15px;">Wedding Day: ${data.name || 'Details to follow'}</p>${detailsHtml}</td></tr></tbody></table>`;
-	}
+        return `<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #DB2777; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #DB2777; text-transform: uppercase; letter-spacing: 1px;">Wedding Day &middot; ${moment(data.date, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 15px; font-weight: 700; color: #0A2540;">${data.name || 'Details to Follow'}</p>${detailsHtml}</div></div>`;
+    }
  
     function handleDownloadClick() {
         const selectedConsultantName = ui.inputs.consultant.value;
@@ -4906,12 +4954,18 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
         if(events.length === 0) {
              html += `<div class="p-4 bg-white rounded-lg border border-gray-200 text-gray-500 italic">No specific itinerary details loaded.</div>`;
         }
- 
+
+        const allHotelsHaveImages = (() => {
+            const hotelEvents = events.filter(e => e.type === 'hotel-checkin');
+            return hotelEvents.length > 0 && hotelEvents.every(e => !!(state.conditionsData[e.data.hotelName]?.imageLink));
+        })();
+
         events.forEach(event => {
             let icon = '';
             let title = '';
             let details = '';
             let subDetails = '';
+            let customCardHtml = null;
             // Handle missing dates gracefully
             let date = event.date.isValid() ? event.date.format('ddd, D MMMM YYYY') : 'Date TBA';
  
@@ -4923,29 +4977,27 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             	if (event.data.baggage) subDetails += `<span class="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded mt-1">Baggage: ${event.data.baggage}</span>`;
  
             } else if (event.type === 'hotel-checkin') {
-            	icon = '🏨';
-            	title = `Check-in: ${event.data.hotelName}`;
             	let nights = 0;
-            	if(event.data.checkout && event.data.checkin) {
+            	if (event.data.checkout && event.data.checkin) {
                  	nights = moment(event.data.checkout, config.dateFormat).diff(moment(event.data.checkin, config.dateFormat), 'days');
             	}
-            	details = `<p class="font-semibold">${nights > 0 ? nights : '?'} Night(s) Stay</p>`;
-            	
+            	const imageLink = allHotelsHaveImages ? (state.conditionsData[event.data.hotelName]?.imageLink || null) : null;
+            	let roomsHtml = '';
             	const numRooms = parseInt(document.getElementById(`num-rooms-${event.data.index}`).value) || 0;
             	for (let r = 1; r <= numRooms; r++) {
                 	const roomTypeEl = document.getElementById(`room-type-select-${event.data.index}-${r}`);
                 	const otherRoomEl = document.getElementById(`other-room-type-${event.data.index}-${r}`);
                 	const roomType = (roomTypeEl && roomTypeEl.value) || (otherRoomEl && otherRoomEl.value) || 'Room';
-                	
-                	subDetails += `<div class="mt-2 text-sm border-l-2 border-gray-200 pl-2"><p><strong>Room ${r}:</strong> ${roomType}</p>`;
+                	roomsHtml += `<div class="mt-2 text-sm border-l-2 border-blue-100 pl-3"><p class="font-semibold text-gray-800">Room ${r}: ${roomType}</p>`;
                 	const mealPlanEl = document.getElementById(`meal-plan-select-${event.data.index}-${r}`);
-                	if (mealPlanEl && mealPlanEl.value) subDetails += `<p class="text-xs text-gray-600">Meal Plan: ${mealPlanEl.value}</p>`;
-                	subDetails += `</div>`;
+                	if (mealPlanEl && mealPlanEl.value) roomsHtml += `<p class="text-xs text-gray-500">Meal Plan: ${mealPlanEl.value}</p>`;
+                	roomsHtml += `</div>`;
             	}
             	if (event.data.selectedSpecial) {
-                	subDetails += `<p class="text-green-600 font-semibold text-xs mt-2">✨ Special Applied: ${event.data.selectedSpecial.SpecialName}</p>`;
-                	if (event.data.selectedSpecial.Inclusions) subDetails += `<p class="text-xs text-gray-500 italic mt-1">Inclusions: ${event.data.selectedSpecial.Inclusions}</p>`;
+                	roomsHtml += `<p class="text-green-600 font-semibold text-xs mt-2">&#10024; Special Applied: ${event.data.selectedSpecial.SpecialName}</p>`;
+                	if (event.data.selectedSpecial.Inclusions) roomsHtml += `<p class="text-xs text-gray-500 italic mt-1">Inclusions: ${event.data.selectedSpecial.Inclusions}</p>`;
             	}
+            	customCardHtml = `<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">${imageLink ? `<div class="h-48 md:h-56 overflow-hidden"><img src="${imageLink}" alt="${event.data.hotelName}" class="w-full h-full object-cover"></div>` : ''}<div class="p-4 border-l-4 border-blue-900"><span class="text-xs font-bold text-blue-900 uppercase tracking-widest">Check-in &middot; ${date}</span><h3 class="text-xl font-bold text-gray-900 mt-1">${event.data.hotelName}</h3><p class="text-sm text-gray-500 mt-1">${nights > 0 ? nights : '?'} Night${nights !== 1 ? 's' : ''} &middot; Check-out ${event.data.checkout ? moment(event.data.checkout, config.dateFormat).format('ddd, D MMMM') : 'TBA'}</p>${roomsHtml}</div></div>`;
  
             } else if (event.type === 'hotel-checkout') {
             	icon = '🧳';
@@ -4975,25 +5027,30 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             	return;
             }
  
-            html += `
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-start space-x-4">
-            	<div class="bg-gray-100 rounded-full h-10 w-10 flex items-center justify-center text-xl shrink-0">${icon}</div>
-            	<div class="flex-grow">
-                	<div class="flex flex-col md:flex-row md:justify-between md:items-start">
-                    	<h3 class="font-bold text-gray-900">${title}</h3>
-                    	<span class="text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 px-2 py-1 rounded whitespace-nowrap">${date}</span>
-                	</div>
-                	<div class="text-sm text-gray-600 mt-1">${details}</div>
-                	${subDetails ? `<div class="mt-1">${subDetails}</div>` : ''}
-            	</div>
-            </div>`;
+            if (customCardHtml) {
+            	html += customCardHtml;
+            } else {
+            	html += `
+            	<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-start space-x-4">
+            		<div class="bg-gray-100 rounded-full h-10 w-10 flex items-center justify-center text-xl shrink-0">${icon}</div>
+            		<div class="flex-grow">
+                		<div class="flex flex-col md:flex-row md:justify-between md:items-start">
+                    		<h3 class="font-bold text-gray-900">${title}</h3>
+                    		<span class="text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 px-2 py-1 rounded whitespace-nowrap">${date}</span>
+                		</div>
+                		<div class="text-sm text-gray-600 mt-1">${details}</div>
+                		${subDetails ? `<div class="mt-1">${subDetails}</div>` : ''}
+            		</div>
+            	</div>`;
+            }
         });
         html += `</div>`;
  
         // 5. Pricing Box
         html += `
-        <div class="bg-indigo-900 rounded-2xl shadow-xl overflow-hidden mt-8 text-white">
+        <div class="rounded-2xl overflow-hidden mt-8 text-white" style="background: #0A2540;">
             <div class="p-6 md:p-8 text-center">
+            	<p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: rgba(255,255,255,0.5);">Pricing</p>
             	<h2 class="text-2xl font-bold mb-6">Select Your Booking Option</h2>
             	<div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
         `;

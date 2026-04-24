@@ -2,6 +2,13 @@
  * Main function that runs when the web app URL is accessed.
  * OPTIMIZED: Splits data loading to prevent HTTP 500 Errors.
  */
+ function getSpreadsheet() {
+  const DEV_SCRIPT_ID = '1b_LE1KiiUZUtrOiNlP308BlO7y8pNNbBWZL0-7IOn7xuCV7DlmSKvBbn';
+  const SPREADSHEET_ID = ScriptApp.getScriptId() === DEV_SCRIPT_ID
+    ? '1TAfQy6KRWLbBNZnU2TrnZuZ3BFd26HC0_sMqCePZRlo'  // DEV sheet
+    : '1YkNVq6StGbG_ZtlNICimWLUoRguePSQ_aOZrb_X-qSY'; // PROD sheet
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
 function doGet(e) {
   // JSON rates API for wholesale portal
   if (e.parameter.action === 'getRates') {
@@ -9,7 +16,7 @@ function doGet(e) {
   }
 
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
 
     const quoteId = e.parameter.q;
     let initialQuote = null;
@@ -64,6 +71,8 @@ function doGet(e) {
    
     const masterCalcsSheet = ss.getSheetByName('MasterCalcs');
     const masterCalcsData = masterCalcsSheet ? getMasterCalcs(masterCalcsSheet) : {};
+    masterCalcsData.TERMS_AND_CONDITIONS = 'https://www.vivatravel.au/about-us/terms-and-conditions/';
+    masterCalcsData.VIVA_LOGO_URL = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQscvyid2gnP2Hbe_EZt0qFTV_OJbPugtjc3g&s';
 
     // Create the payload
     const payload = {
@@ -98,7 +107,7 @@ function doGet(e) {
  * This runs AFTER the page has loaded, preventing the 500 error.
  */
 function getAsyncData() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   
   // Helper to fetch full sheet
   const fetchFull = (sheetName) => {
@@ -159,7 +168,7 @@ function sheetToObjects(sheet) {
  */
 function saveQuote(quoteDetails) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     let sheet = ss.getSheetByName('SavedQuotes');
     if (!sheet) {
        // Create sheet if it doesn't exist to prevent crash
@@ -197,7 +206,7 @@ function saveQuote(quoteDetails) {
  */
 function searchQuotes(searchTerm) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName('SavedQuotes');
 
     if (!sheet) return [];
@@ -257,7 +266,7 @@ function searchQuotes(searchTerm) {
  */
 function getQuote(quoteId) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName('SavedQuotes');
     if (!sheet) {
       return { error: "Sheet 'SavedQuotes' not found." };
@@ -349,7 +358,7 @@ function include(filename) {
  */
 function getRatesJson() {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const data = {
       rates:      sheetToObjects(ss.getSheetByName('RatesEntry'))  || [],
       conditions: sheetToObjects(ss.getSheetByName('Conditions'))  || [],
@@ -373,7 +382,7 @@ function getRatesJson() {
  */
 function acceptQuote(quoteId, option, price) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     const sheet = ss.getSheetByName('SavedQuotes');
     if (!sheet) return { error: "Sheet not found" };
    
@@ -557,6 +566,35 @@ function AUTHORIZE_EMAIL_HERE() {
   const email = Session.getActiveUser().getEmail();
   GmailApp.sendEmail(email, "Test Email", "If you received this, the app is authorized to send emails.");
   Logger.log("Email authorization successful. You can now use the app.");
+}
+
+function getImageAsBase64(url) {
+  try {
+    let blob;
+
+    // Extract Google Drive file ID from any common Drive URL format
+    const driveId = (
+      url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+      url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/) ||
+      url.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+      url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/)
+    )?.[1];
+
+    if (driveId) {
+      blob = DriveApp.getFileById(driveId).getBlob();
+    } else {
+      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+      if (response.getResponseCode() !== 200) return null;
+      blob = response.getBlob();
+    }
+
+    const mimeType = blob.getContentType() || 'image/jpeg';
+    if (!mimeType.startsWith('image/')) return null;
+    return 'data:' + mimeType + ';base64,' + Utilities.base64Encode(blob.getBytes());
+  } catch (e) {
+    Logger.log('getImageAsBase64 error for ' + url + ': ' + e);
+    return null;
+  }
 }
 
 
