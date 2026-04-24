@@ -13,12 +13,19 @@
 - PROD Spreadsheet: 1YkNVq6StGbG_ZtlNICimWLUoRguePSQ_aOZrb_X-qSY
 
 ## Deploy Commands
-DEV: copy .clasp-dev.json .clasp.json && clasp push --force
-PROD: copy .clasp-prod.json .clasp.json && clasp push --force && copy .clasp-dev.json .clasp.json
+DEV:
+1. cp .clasp-dev.json .clasp.json && clasp push --force
+2. Apps Script editor > Deploy > Manage deployments > Edit (pencil) > Version: New version > Save
+   (URL stays the same — never use `clasp deploy` as it breaks the Web App deployment type)
+
+PROD:
+1. cp .clasp-prod.json .clasp.json && clasp push --force && cp .clasp-dev.json .clasp.json
+2. Apps Script editor (PROD project) > Deploy > Manage deployments > Edit (pencil) > Version: New version > Save
+
 GitHub: git add . && git commit -m "description" && git push
 
 ## DEV URL
 https://script.google.com/a/macros/travelwithviva.com/s/AKfycbzXsrEfi_SpNmpGgElEXEGjbazjwfflLkc_NDthJco7YVHac2OZ2g3jo9SC6-4RdxOU2Q/exec
 
 ## PROD URL
-https://script.google.com/a/macros/travelwithviva.com/s/AKfycbzsuAgbHbiw1Bskex0sum1gom-fccU5HXLz9eXpfzKqHEEPZjkSpdRKYKq-eOtqw5to/exec
+https://script.google.com/a/macros/travelwithviva.com/s/AKfycbwaoQn3bYR_4nRb5sXTdbZTSMTSXf3n8UhCXtW9lKNwANmhFstiJLNom6iyJDdldBsE/exec
