@@ -2283,21 +2283,24 @@ function updateInstantPurchaseToggle(prices) {
     const today = moment();
     const daysUntilTravel = earliestDate ? earliestDate.diff(today, 'days') : -1;
     const isDateValid = daysUntilTravel > 60;
- 
+
     // Condition 2: Land Margin >= 18%
     const landSell = prices.totalSell - prices.flightGross;
     const landNett = prices.totalNett - prices.flightNett;
-	
+
     let landMargin = 0;
     if (landSell > 0) {
         const landProfit = landSell - landNett;
         landMargin = (landProfit / landSell) * 100;
 	}
-	
+
     const isMarginValid = landMargin >= 18;
- 
+
+    // Condition 3: Sale Type must be B2C (not B2B)
+    const isB2C = ui.inputs.saleType.value !== 'B2B';
+
     // Apply State
-    if (isDateValid && isMarginValid) {
+    if (isDateValid && isMarginValid && isB2C) {
         // Enable: Remove shading and allow interaction
         toggleInput.disabled = false;
         toggleInput.classList.remove('cursor-not-allowed');
