@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiji Quote Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/pikaday/css/pikaday.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Feather Icons for UI -->
+  <script src="https://unpkg.com/feather-icons"></script>
+  <!-- PDF Generation Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <?!= include('Stylesheet.html'); ?>
+</head>
+
+
+<body class="bg-slate-50 font-sans overflow-hidden">
+ 
+  <!-- Loading State -->
+  <div id="loading-container" class="flex flex-col items-center justify-center h-screen w-full text-center fixed inset-0 z-50 bg-slate-50">
+      <div class="loader ease-linear rounded-full border-8 border-t-8 border-indigo-200 h-24 w-24 mx-auto mb-4 border-t-indigo-600"></div>
+      <p id="loading-text" class="text-lg font-semibold text-gray-600">Loading latest rates...</p>
+  </div>
+
+
+  <div id="main-content" class="hidden flex h-screen w-full">
+     
+      <!-- LEFT NAVIGATION SIDEBAR -->
+      <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-20 shrink-0">
+          <div class="p-6 border-b border-gray-200">
+              <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Viva<span class="text-indigo-600">Travel</span></h1>
+              <p class="text-xs text-gray-500 mt-1 uppercase tracking-wider font-semibold">Quote Builder</p>
+          </div>
+         
+          <div class="flex-1 overflow-y-auto p-4 space-y-1" id="sidebar-nav">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-4 mt-2">Setup</div>
+              <button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg bg-indigo-50 text-indigo-700 font-semibold transition" data-target="tab-overview">
+                  <i data-feather="file-text" class="w-5 h-5"></i><span>Quote Details</span>
+              </button>
+             
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-4 mt-6">Itinerary</div>
+              <button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-100 transition" data-target="tab-hotels">
+                  <i data-feather="home" class="w-5 h-5"></i><span>Accommodation</span>
+              </button>
+              <button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-100 transition" data-target="tab-flights">
+                  <i data-feather="navigation" class="w-5 h-5"></i><span>Flights</span>
+              </button>
+<button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-100 transition" data-target="tab-transfers">
+                  <i data-feather="truck" class="w-5 h-5"></i><span>Transfers</span>
+              </button>
+              <button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-100 transition" data-target="tab-tours">
+                  <i data-feather="map" class="w-5 h-5"></i><span>Tours & Activities</span>
+              </button>
+             
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-4 mt-6">Review</div>
+              <button class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-100 transition" data-target="tab-finances">
+                  <i data-feather="dollar-sign" class="w-5 h-5"></i><span>Finances</span>
+              </button>
+          </div>
+      </aside>
+
+
+      <!-- MAIN WORKSPACE -->
+      <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+         
+          <!-- Top Action Bar -->
+          <header class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10 shrink-0">
+              <div id="quote-reference-container" class="hidden flex items-center space-x-4">
+                  <span class="text-sm text-gray-500">Ref:</span>
+                  <span id="quote-reference-id" class="px-3 py-1 bg-gray-100 text-gray-800 font-mono text-sm font-semibold rounded-md border"></span>
+                  <div class="hidden sm:flex items-center space-x-2">
+                      <input type="text" id="share-link-input" readonly class="text-xs text-gray-400 bg-transparent outline-none w-32 truncate" value="">
+                      <button id="copy-link-button" class="text-indigo-600 text-xs font-bold hover:underline">Copy Link</button>
+                  </div>
+                  <span id="copy-feedback" class="text-xs text-green-600 font-bold hidden">Copied!</span>
+              </div>
+              <div class="flex space-x-3 ml-auto">
+                  <button id="show-load-quote-modal-button" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition">Load</button>
+                  <button id="reset-button" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-transparent rounded-lg hover:bg-gray-200 transition">Reset</button>
+                  <button id="view-net-rates-button" class="hidden px-4 py-2 text-sm font-medium text-orange-700 bg-orange-100 rounded-lg hover:bg-orange-200 transition">Net Rates</button>
+                  <button id="download-quote-button" class="hidden px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition">PDF</button>
+                  <button id="save-quote-button" class="hidden px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition">Save</button>
+              </div>
+          </header>
+
+
+          <!-- Messages -->
+          <div id="save-success-message" class="hidden mx-6 mt-4 p-3 bg-green-100 text-green-700 border border-green-200 rounded-lg text-center text-sm font-medium shrink-0"></div>
+          <div id="error-message" class="hidden mx-6 mt-4 p-3 bg-red-100 text-red-700 border border-red-200 rounded-lg text-center text-sm font-medium shrink-0"></div>
+
+
+          <!-- Scrollable Workspace -->
+          <div class="flex-1 overflow-y-auto p-4 sm:p-8" id="main-scroll-area">
+              <div class="max-w-4xl mx-auto pb-24">
+                 
+                  <form id="calculator-form-left" onsubmit="return false;">
+                      <!-- TAB: OVERVIEW -->
+                      <div id="tab-overview" class="tab-pane active block animate-in fade-in duration-300 space-y-6">
+                         
+                          <!-- Quote Config -->
+                          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <h2 class="text-xl font-semibold text-gray-800 border-b border-gray-100 pb-3">Quote Configuration</h2>
+                              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div>
+                                      <label for="consultant-select" class="block text-sm font-medium text-gray-700 mb-2">Consultant</label>
+                                      <select id="consultant-select" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"></select>
+                                      <p id="consultant-error" class="text-red-500 text-sm mt-1 hidden">Please select a consultant to download.</p>
+                                  </div>
+                                  <div>
+                                      <label for="sale-type-select" class="block text-sm font-medium text-gray-700 mb-2">Sale Type</label>
+                                      <select id="sale-type-select" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                                          <option value="B2C" selected>Business to Consumer</option>
+                                          <option value="B2B">Business to Business</option>
+                                      </select>
+                                  </div>
+                              </div>
+                              <div id="b2b-fields-container" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                                  <div>
+                                      <label for="travel-agency-name" class="block text-sm font-medium text-gray-700 mb-2">Travel Agency Name</label>
+                                      <input type="text" id="travel-agency-name" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Enter agency name">
+                                  </div>
+                                  <div>
+                                      <label for="travel-agent-name" class="block text-sm font-medium text-gray-700 mb-2">Travel Agent Name</label>
+                                      <input type="text" id="travel-agent-name" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Enter agent name">
+                                  </div>
+                              </div>
+                              <div class="pt-4 border-t border-gray-100">
+                                   <label class="flex items-center space-x-2 cursor-pointer">
+                                       <input type="checkbox" id="destination-wedding-checkbox" class="rounded h-4 w-4 text-indigo-600">
+                                       <span class="text-sm font-medium text-gray-700">Destination Wedding?</span>
+                                   </label>
+                              </div>
+                              <div id="wedding-name-container" class="hidden">
+                                  <label for="wedding-name-input" class="block text-sm font-medium text-gray-700 mb-2">Wedding Name</label>
+                                  <input type="text" id="wedding-name-input" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., The Wedding of John & Jane">
+                              </div>
+                          </div>
+
+                          <!-- Passengers -->
+                          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <h2 class="text-xl font-semibold text-gray-800 border-b border-gray-100 pb-3">Passenger Details</h2>
+                              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div>
+                                      <label for="num-adults" class="block text-sm font-medium text-gray-700 mb-2">Number of Adults</label>
+                                      <input type="number" id="num-adults" value="2" min="1" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                  </div>
+                                  <div>
+                                      <label for="num-children" class="block text-sm font-medium text-gray-700 mb-2">Number of Children</label>
+                                      <input type="number" id="num-children" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                  </div>
+                              </div>
+                              <div id="passenger-name-inputs-container" class="mt-4 space-y-4"></div>
+                          </div>
+
+                          <!-- Wedding Package -->
+                          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                                  <h2 class="text-xl font-semibold text-gray-800">Wedding Package Configuration</h2>
+                                  <select id="add-wedding-select" class="w-32 p-2 border border-gray-300 rounded-lg text-sm bg-gray-50">
+                                      <option value="No" selected>Disabled</option>
+                                      <option value="Yes">Enabled</option>
+                                  </select>
+                              </div>
+                              <div id="wedding-package-container" class="hidden space-y-4">
+                                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                      <div>
+                                          <label for="wedding-date" class="block text-sm font-medium text-gray-700 mb-2">Date of Wedding</label>
+                                          <input type="text" id="wedding-date" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Select date" autocomplete="off">
+                                      </div>
+                                      <div>
+                                          <label for="wedding-package-name" class="block text-sm font-medium text-gray-700 mb-2">Package Name</label>
+                                          <input type="text" id="wedding-package-name" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., Vow to Wow Package">
+                                      </div>
+                                  </div>
+                                  <div>
+                                      <label for="wedding-package-inclusions" class="block text-sm font-medium text-gray-700 mb-2">Inclusions</label>
+                                      <textarea id="wedding-package-inclusions" rows="2" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., Wedding coordinator, Ceremony setup..."></textarea>
+                                  </div>
+                                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                      <div>
+                                          <label for="wedding-gross-price" class="block text-sm font-medium text-gray-700 mb-2">Gross Price (AUD)</label>
+                                          <input type="number" id="wedding-gross-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                      </div>
+                                      <div>
+                                          <label for="wedding-nett-price" class="block text-sm font-medium text-gray-700 mb-2">Nett Price (AUD)</label>
+                                          <input type="number" id="wedding-nett-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <!-- Notes (MOVED FROM FINANCES) -->
+                          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <h2 class="text-xl font-semibold text-gray-800 border-b border-gray-100 pb-3">Quote Notes</h2>
+                              <div>
+                                  <label for="consultant-notes" class="block text-sm font-medium text-gray-700 mb-2">Notes for Quote (Visible to Client)</label>
+                                  <textarea id="consultant-notes" rows="4" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., Special requests, payment instructions, etc."></textarea>
+                              </div>
+                              <div>
+                                  <label for="internal-notes" class="block text-sm font-medium text-gray-700 mb-2">Internal Notes (Not shown to client)</label>
+                                  <textarea id="internal-notes" rows="3" class="w-full p-2.5 border border-gray-300 rounded-lg bg-yellow-50" placeholder="e.g., Follow up on Tuesday..."></textarea>
+                              </div>
+                          </div>
+                      </div>
+
+                      <!-- TAB: FINANCES -->
+                      <div id="tab-finances" class="tab-pane hidden animate-in fade-in duration-300 space-y-6">
+                          
+                          <!-- Fees & Discounts -->
+                          <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <h2 class="text-xl font-semibold text-gray-800 border-b border-gray-100 pb-3">Fees & Discounts</h2>
+                             
+                              <div>
+                                  <label for="booking-fee" class="block text-sm font-medium text-gray-700 mb-2">Booking Fee (AUD)</label>
+                                  <input type="number" id="booking-fee" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                              </div>
+                             
+                              <div id="commission-fields-container" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                                  <div>
+                                      <label for="land-commission-amount" class="block text-sm font-medium text-gray-700 mb-2">Land Commission (AUD)</label>
+                                      <div class="relative">
+                                          <input type="number" id="land-commission-amount" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg pr-8">
+                                          <button type="button" id="reset-land-commission" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 hidden" title="Reset to default calculation">&#x2715;</button>
+                                      </div>
+                                  </div>
+                                  <div>
+                                      <label for="flight-commission-amount" class="block text-sm font-medium text-gray-700 mb-2">Flight Commission (AUD)</label>
+                                      <div class="relative">
+                                          <input type="number" id="flight-commission-amount" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg pr-8">
+                                          <button type="button" id="reset-flight-commission" class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 hidden" title="Reset to default calculation">&#x2715;</button>
+                                      </div>
+                                  </div>
+                              </div>
+                             
+                              <div class="pt-4 border-t border-gray-100">
+                                  <label for="discount-amount" class="block text-sm font-medium text-gray-700 mb-2">Discount (AUD)</label>
+                                  <input type="number" id="discount-amount" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                              </div>
+                              <div>
+                                  <label for="discount-reason" class="block text-sm font-medium text-gray-700 mb-2">Discount Reason (Optional)</label>
+                                  <textarea id="discount-reason" rows="2" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., Early booking bonus"></textarea>
+                              </div>
+                          </div>
+
+                          <!-- Payment Schedule (MOVED FROM OVERVIEW) -->
+                          <div id="payment-schedule-container" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
+                              <h2 class="text-xl font-semibold text-gray-800 border-b border-gray-100 pb-3">Payment Schedule</h2>
+                              <div class="space-y-4">
+                                  <div class="grid grid-cols-2 gap-6 items-end">
+                                      <div>
+                                          <label for="deposit-amount" class="block text-sm font-medium text-gray-700 mb-1">Deposit Amount (AUD)</label>
+                                          <input type="number" id="deposit-amount" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., 500">
+                                      </div>
+                                      <div>
+                                          <label for="deposit-due-date" class="block text-sm font-medium text-gray-700 mb-1">Deposit Due Date</label>
+                                          <input type="text" id="deposit-due-date" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Select date" autocomplete="off">
+                                      </div>
+                                  </div>
+                                  <div class="grid grid-cols-2 gap-6 items-end">
+                                      <div>
+                                          <label for="flight-payment-amount" class="block text-sm font-medium text-gray-700 mb-1">Flight Payment (AUD)</label>
+                                          <input type="number" id="flight-payment-amount" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., 1200">
+                                      </div>
+                                      <div>
+                                          <label for="flight-payment-due-date" class="block text-sm font-medium text-gray-700 mb-1">Flight Due Date</label>
+                                          <input type="text" id="flight-payment-due-date" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Select date" autocomplete="off">
+                                      </div>
+                                  </div>
+                                  <div class="grid grid-cols-2 gap-6 items-end">
+                                      <div>
+                                          <label for="final-payment-amount" class="block text-sm font-medium text-gray-700 mb-1">Final Payment (AUD)</label>
+                                          <input type="number" id="final-payment-amount" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="e.g., 3000">
+                                      </div>
+                                      <div>
+                                          <label for="final-payment-due-date" class="block text-sm font-medium text-gray-700 mb-1">Final Due Date</label>
+                                          <input type="text" id="final-payment-due-date" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Select date" autocomplete="off">
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </form>
+
+
+                  <form id="calculator-form-middle" onsubmit="return false;">
+                     
+                      <!-- TAB: HOTELS -->
+                      <div id="tab-hotels" class="tab-pane hidden animate-in fade-in duration-300">
+                          <div class="flex items-center justify-between mb-6">
+                              <div>
+                                  <h2 class="text-2xl font-bold text-gray-900">Accommodation</h2>
+                                  <p class="text-gray-500 mt-1">Manage hotel stays and room configurations.</p>
+                              </div>
+                              <div>
+                                  <label for="num-hotels" class="block text-xs font-medium text-gray-500 mb-1 text-right">Total Stays</label>
+                                  <input type="number" id="num-hotels" value="1" min="1" class="w-24 p-2 border border-gray-300 rounded-lg text-center font-bold">
+                              </div>
+                          </div>
+                          <div id="hotel-sections-container" class="space-y-4"></div>
+                      </div>
+
+
+                      <!-- TAB: FLIGHTS -->
+                      <div id="tab-flights" class="tab-pane hidden animate-in fade-in duration-300">
+                          <div class="flex items-center justify-between mb-6">
+                              <div>
+                                  <h2 class="text-2xl font-bold text-gray-900">Flights</h2>
+                                  <p class="text-gray-500 mt-1">Add flight sectors to the itinerary.</p>
+                              </div>
+                              <div class="flex space-x-4 items-center">
+                                  <div>
+                                      <label for="add-flights-select" class="block text-xs font-medium text-gray-500 mb-1 text-right">Enabled</label>
+                                      <select id="add-flights-select" class="w-24 p-2 border border-gray-300 rounded-lg text-sm bg-gray-50">
+                                          <option value="No" selected>No</option>
+                                          <option value="Yes">Yes</option>
+                                      </select>
+                                  </div>
+                                  <div id="num-flights-wrapper" class="hidden">
+                                      <label for="num-flights-input" class="block text-xs font-medium text-gray-500 mb-1 text-right">Sectors</label>
+                                      <input type="number" id="num-flights-input" value="0" min="0" class="w-20 p-2 border border-gray-300 rounded-lg text-center text-sm font-bold">
+                                  </div>
+                              </div>
+                          </div>
+                          <div id="flight-sectors-container" class="space-y-4"></div>
+                          <div id="flight-pricing-wrapper" class="hidden bg-white p-6 rounded-xl border border-gray-200 mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                  <label for="flight-price" class="block text-sm font-medium text-gray-700 mb-2">Total Flight Gross Price (AUD)</label>
+                                  <input type="number" id="flight-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                              </div>
+                              <div>
+                                  <label for="flight-nett-price" class="block text-sm font-medium text-gray-700 mb-2">Total Flight Nett Price (AUD)</label>
+                                  <input type="number" id="flight-nett-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                              </div>
+                          </div>
+                      </div>
+
+
+                     <!-- TAB: TRANSFERS -->
+                      <div id="tab-transfers" class="tab-pane hidden animate-in fade-in duration-300">
+                          <div>
+                              <div class="flex items-center justify-between mb-6">
+                                  <div>
+                                      <h2 class="text-2xl font-bold text-gray-900">Transfers</h2>
+                                      <p class="text-gray-500 mt-1">Configure transport between locations.</p>
+                                  </div>
+                                  <div class="flex space-x-4 items-center">
+                                      <div>
+                                          <label for="add-transfers-select" class="block text-xs font-medium text-gray-500 mb-1 text-right">Enabled</label>
+                                          <select id="add-transfers-select" class="w-24 p-2 border border-gray-300 rounded-lg text-sm bg-gray-50">
+                                              <option value="No" selected>No</option>
+                                              <option value="Yes">Yes</option>
+                                          </select>
+                                      </div>
+                                      <div id="num-transfers-wrapper" class="hidden">
+                                          <label for="num-transfers-input" class="block text-xs font-medium text-gray-500 mb-1 text-right">Sectors</label>
+                                          <input type="number" id="num-transfers-input" value="0" min="0" class="w-20 p-2 border border-gray-300 rounded-lg text-center text-sm font-bold">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div id="transfer-sectors-container" class="space-y-4"></div>
+                          </div>
+                      </div>
+
+                      <!-- TAB: TOURS -->
+                      <div id="tab-tours" class="tab-pane hidden animate-in fade-in duration-300">
+                          <div>
+                              <div class="flex items-center justify-between mb-6">
+                                  <div>
+                                      <h2 class="text-2xl font-bold text-gray-900">Tours & Activities</h2>
+                                      <p class="text-gray-500 mt-1">Add day trips and experiences.</p>
+                                  </div>
+                                  <div class="flex space-x-4 items-center">
+                                      <div>
+                                          <label for="add-tours-select" class="block text-xs font-medium text-gray-500 mb-1 text-right">Enabled</label>
+                                          <select id="add-tours-select" class="w-24 p-2 border border-gray-300 rounded-lg text-sm bg-gray-50">
+                                              <option value="No" selected>No</option>
+                                              <option value="Yes">Yes</option>
+                                          </select>
+                                      </div>
+                                      <div id="num-tours-wrapper" class="hidden">
+                                          <label for="num-tours-input" class="block text-xs font-medium text-gray-500 mb-1 text-right">Tours</label>
+                                          <input type="number" id="num-tours-input" value="0" min="0" class="w-20 p-2 border border-gray-300 rounded-lg text-center text-sm font-bold">
+                                      </div>
+                                  </div>
+                              </div>
+                              <div id="tour-sectors-container" class="space-y-4"></div>
+                              <div id="tour-pricing-wrapper" class="hidden bg-white p-6 rounded-xl border border-gray-200 mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div>
+                                      <label for="tour-price" class="block text-sm font-medium text-gray-700 mb-2">Total Tour Gross Price (AUD)</label>
+                                      <input type="number" id="tour-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                  </div>
+                                  <div>
+                                      <label for="tour-nett-price" class="block text-sm font-medium text-gray-700 mb-2">Total Tour Nett Price (AUD)</label>
+                                      <input type="number" id="tour-nett-price" value="0" min="0" class="w-full p-2.5 border border-gray-300 rounded-lg">
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+
+
+                  </form>
+              </div>
+          </div>
+      </main>
+
+
+      <!-- RIGHT STICKY SUMMARY SIDEBAR -->
+      <aside class="w-[380px] bg-slate-50 border-l border-gray-200 z-20 flex flex-col hidden lg:flex shrink-0 overflow-y-auto shadow-inner">
+          <div id="result-container" class="p-6">
+             
+              <!-- Standard Quote Summary -->
+              <div id="standard-rate-summary">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Live Quote Summary</h2>
+                  <div class="bg-indigo-600 p-5 rounded-xl mb-6 shadow-md text-white">
+                      <p class="text-xs text-indigo-100 uppercase font-semibold mb-1">Flexible Sell Price</p>
+                      <p class="text-3xl font-bold" id="aud-price">AUD $0</p>
+                     
+                      <!-- Instant Purchase Toggle -->
+                      <div class="mt-4 pt-4 border-t border-indigo-500">
+                          <div id="instant-purchase-container" class="flex items-center justify-between bg-white/10 p-3 rounded-lg border border-indigo-400 opacity-60 cursor-not-allowed transition-all duration-300">
+                              <div class="flex flex-col text-left">
+                                  <div class="flex items-center gap-2">
+                                      <span class="text-sm font-bold text-white">Instant Purchase</span>
+                                      <span id="instant-purchase-badge" class="hidden px-2 py-0.5 text-[10px] font-bold text-indigo-900 bg-green-400 rounded-full animate-pulse">AVAILABLE</span>
+                                  </div>
+                                  <span id="instant-purchase-message" class="hidden text-[10px] text-green-300 font-bold mt-1">Enable to lock in margin.</span>
+                              </div>
+                              <label class="relative inline-flex items-center cursor-not-allowed">
+                                  <input type="checkbox" id="instant-purchase-toggle" class="sr-only peer" disabled>
+                                  <div class="w-9 h-5 bg-indigo-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"></div>
+                              </label>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              <!-- Special Offer (Standard) -->
+              <div id="special-offer-container" class="hidden mt-6">
+                  <div class="bg-green-50 border border-green-200 p-5 rounded-xl mb-6 shadow-sm">
+                      <p class="text-xs text-green-700 uppercase font-bold flex items-center mb-1"> ✨ Special Offer Found </p>
+                      <p class="text-sm font-semibold text-green-800" id="special-name">Special Name</p>
+                      <p class="text-2xl font-bold text-green-700 mt-2" id="special-aud-price">AUD $0</p>
+                      <div class="mt-3 pt-3 border-t border-green-200">
+                          <p id="special-inclusions" class="text-xs text-green-700 italic"></p>
+                      </div>
+                  </div>
+              </div>
+
+              <!-- Itemized Elements (Hidden technically, but keep for calculations) -->
+              <div class="hidden text-xs">
+                  <span id="aud-accom-sell-price"></span>
+                  <span id="aud-meal-sell-price"></span>
+                  <span id="aud-wedding-sell-price"></span>
+                  <span id="aud-transfer-sell-price"></span>
+                  <span id="aud-tour-sell-price"></span>
+                  <span id="aud-flight-sell-price"></span>
+                  <span id="aud-booking-fee-sell-price"></span>
+                  <span id="special-aud-accom-sell-price"></span>
+                  <span id="special-aud-meal-sell-price"></span>
+                  <span id="special-aud-transfer-sell-price"></span>
+                  <span id="special-aud-tour-sell-price"></span>
+                  <span id="special-aud-flight-sell-price"></span>
+                  <span id="special-aud-booking-fee-sell-price"></span>
+                  
+                  <!-- Hidden required elements -->
+                  <span id="fjd-accom-nett-price"></span>
+                  <span id="fjd-meal-nett-price"></span>
+                  <span id="fjd-transfer-nett-price"></span>
+                  <span id="fjd-tour-nett-price"></span>
+                  <span id="fjd-flight-nett-price"></span>
+                  <span id="aud-accom-nett-price"></span>
+                  <span id="aud-meal-nett-price"></span>
+                  <span id="aud-transfer-nett-price"></span>
+                  <span id="aud-tour-nett-price"></span>
+                  <span id="aud-flight-nett-price"></span>
+              </div>
+
+              <!-- Financial Breakdown (Flexible) - NOW AN ACCORDION -->
+              <div id="financial-breakdown-standard" class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-4 hidden">
+                  <button type="button" onclick="toggleAccordion('financial-breakdown-body', 'financial-breakdown-icon')" class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition border-b border-gray-100 focus:outline-none">
+                      <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider">Internal Breakdown</h3>
+                      <span id="financial-breakdown-icon" class="text-gray-400 transition-transform duration-200 transform rotate-180">▼</span>
+                  </button>
+                  <div id="financial-breakdown-body" class="p-5">
+                      <div class="space-y-2 text-sm">
+                          <div class="flex justify-between font-medium">
+                              <span class="text-gray-600">Total Gross:</span>
+                              <span class="text-gray-900" id="aud-gross-price">AUD $0</span>
+                          </div>
+                          <div class="flex justify-between">
+                              <span class="text-gray-500">Total Nett:</span>
+                              <span class="text-gray-800" id="aud-nett-price">AUD $0</span>
+                          </div>
+                          <div class="hidden" id="fjd-price"></div>
+                          <div id="agent-commission-row" class="hidden flex justify-between border-t pt-2 mt-2">
+                              <span class="text-red-600 font-semibold">Agent Comm:</span>
+                              <span class="font-semibold text-red-600" id="agent-commission-price">- AUD $0</span>
+                          </div>
+                          <div class="flex justify-between border-t border-gray-100 pt-2 mt-2">
+                              <span class="text-green-600 font-semibold" id="net-commission-label">Net Comm:</span>
+                              <span class="font-semibold text-green-600" id="commission-price">AUD $0</span>
+                          </div>
+                          <div class="flex justify-between">
+                              <span class="font-semibold text-gray-700">Margin %:</span>
+                              <span class="font-semibold" id="margin-percentage">0.00%</span>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              <!-- INSTANT PURCHASE BREAKDOWN -->
+              <div id="instant-purchase-breakdown" class="hidden mb-4 bg-green-50 border border-green-300 rounded-xl p-5 shadow-sm relative">
+                  <div class="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg">INSTANT</div>
+                  <h3 class="text-xs font-bold text-green-800 uppercase tracking-wider mb-3">Instant Breakdown</h3>
+                  <div class="flex justify-between items-end mb-3 border-b border-green-200 pb-3">
+                      <div>
+                          <p class="text-[10px] text-green-700 font-semibold uppercase">Total Price</p>
+                          <p class="text-xl font-bold text-green-700" id="instant-aud-price">AUD $0</p>
+                      </div>
+                      <div class="text-right">
+                          <p class="text-[10px] text-green-700 font-semibold uppercase">Client Saves</p>
+                          <p class="text-lg font-bold text-green-600" id="instant-savings-amount">AUD $0</p>
+                      </div>
+                  </div>
+                  <div class="space-y-1">
+                      <div class="flex justify-between text-xs">
+                          <span class="text-gray-700 font-medium">Gross:</span>
+                          <span class="text-gray-900 font-bold" id="instant-aud-gross-price">AUD $0</span>
+                      </div>
+                      <div class="flex justify-between text-xs">
+                          <span class="text-gray-600">Nett:</span>
+                          <span class="font-medium text-gray-800" id="instant-aud-nett-price">AUD $0</span>
+                      </div>
+                      <div class="flex justify-between text-xs border-t border-green-200 pt-1 mt-1">
+                          <span class="text-green-700 font-semibold">Comm:</span>
+                          <span class="font-semibold text-green-700" id="instant-commission-price">AUD $0</span>
+                      </div>
+                      <div class="flex justify-between text-xs">
+                          <span class="font-semibold text-gray-700">Margin:</span>
+                          <span class="font-semibold text-gray-700" id="instant-margin-percentage">13.00%</span>
+                      </div>
+                  </div>
+              </div>
+
+              <div id="special-financial-breakdown" class="hidden border border-green-200 rounded-xl p-5 shadow-sm">
+                  <div class="hidden" id="special-fjd-price"></div>
+                  <div class="hidden" id="special-aud-gross-price"></div>
+                  <div class="hidden" id="special-aud-nett-price"></div>
+                  <div class="hidden" id="special-commission-price"></div>
+                  <div class="hidden" id="special-margin-percentage"></div>
+              </div>
+
+              <!-- RATE BREAKDOWN - NOW AN ACCORDION & SCROLLABLE -->
+              <div id="rate-breakdown-container" class="mt-4 hidden bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                  <button type="button" onclick="toggleAccordion('rate-breakdown-body', 'rate-breakdown-icon')" class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition border-b border-gray-100 focus:outline-none">
+                      <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider">Rate Breakdown</h3>
+                      <span id="rate-breakdown-icon" class="text-gray-400 transition-transform duration-200 transform rotate-0">▼</span>
+                  </button>
+                  
+                  <!-- Notice this body is hidden by default -->
+                  <div id="rate-breakdown-body" class="hidden">
+                      <div class="max-h-64 overflow-y-auto"> <!-- Scrollable inner container -->
+                          <table class="min-w-full bg-white">
+                              <tbody id="rate-breakdown-tbody" class="divide-y divide-gray-100"></tbody>
+                          </table>
+                      </div>
+                  </div>
+              </div>
+              
+              <p class="text-xs text-gray-400 mt-6 text-center" id="calculation-details"></p>
+          </div>
+      </aside>
+  </div>
+
+
+  <!-- ALL MODALS EXACTLY AS BEFORE -->
+  <div id="reorder-modal" class="modal-overlay hidden">
+      <div class="modal-content space-y-4">
+          <h3 class="text-lg font-semibold text-gray-800">Reorder Quote Items</h3>
+          <p class="text-sm text-gray-600">Drag and drop the items below to set their order on the PDF.</p>
+          <div id="reorder-list" class="space-y-2 max-h-96 overflow-y-auto p-2 border rounded-lg"></div>
+          <div id="reorder-modal-buttons" class="flex justify-end space-x-3">
+              <button id="cancel-reorder-button" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancel</button>
+              <button id="confirm-order-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Generate PDF</button>
+          </div>
+          <div id="generating-pdf-spinner" class="hidden text-center">
+              <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div>
+              <p class="mt-2 text-gray-600">Generating PDF...</p>
+          </div>
+      </div>
+  </div>
+
+
+  <div id="load-quote-modal" class="modal-overlay hidden">
+      <div class="modal-content space-y-4">
+          <h3 class="text-lg font-semibold text-gray-800">Load a Saved Quote</h3>
+          <div id="load-quote-error" class="hidden p-3 bg-red-100 text-red-700 border border-red-200 rounded-lg"></div>
+          <p class="text-sm text-gray-600">Search for a quote by client name or ID.</p>
+          <input type="text" id="load-quote-search-input" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search by Client Name or Quote ID...">
+          <div id="load-quote-list" class="space-y-2 max-h-80 overflow-y-auto p-2 border rounded-lg"></div>
+          <div id="load-quote-spinner" class="hidden text-center">
+              <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div>
+              <p class="mt-2 text-gray-600">Loading...</p>
+          </div>
+          <div class="flex justify-end space-x-3">
+              <button id="cancel-load-quote-button" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancel</button>
+          </div>
+      </div>
+  </div>
+
+
+  <div id="quote-summary-modal" class="modal-overlay hidden">
+      <div class="modal-content space-y-4">
+          <h3 class="text-xl font-semibold text-gray-800 border-b pb-2">Quote Summary</h3>
+          <div id="quote-summary-spinner" class="hidden text-center py-8">
+              <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div>
+              <p class="mt-2 text-gray-600">Loading Summary...</p>
+          </div>
+          <div id="quote-summary-content" class="space-y-3 max-h-96 overflow-y-auto text-sm"></div>
+          <div class="flex justify-end pt-4 border-t">
+              <button id="close-summary-modal-button" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Close</button>
+          </div>
+      </div>
+  </div>
+
+
+  <div id="pdf-content" class="hidden"></div>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/moment/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pikaday/pikaday.js"></script>
+  <script>
+    var serverData = <?!= data ?>;
+    document.addEventListener('DOMContentLoaded', () => {
+        feather.replace();
+    });
+  </script>
+  <?!= include('JavaScript.html'); ?>
+
+
+  <div id="customer-acceptance-modal" class="fixed inset-0 bg-gray-900 bg-opacity-90 hidden z-50 flex items-center justify-center p-4">
+     <!-- Exact same as before -->
+     <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-6">
+         <div class="text-center border-b pb-4">
+             <h2 class="text-2xl font-bold text-gray-800">Quote Acceptance</h2>
+             <p class="text-gray-600 mt-1">Reference: <span id="accept-quote-id" class="font-mono font-bold text-indigo-600"></span></p>
+         </div>
+         <div id="accept-loading" class="text-center py-4">
+             <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mx-auto"></div>
+             <p class="mt-2 text-gray-600">Loading details...</p>
+         </div>
+         <div id="accept-form" class="hidden space-y-4"></div>
+         <div id="accept-success" class="hidden text-center py-6">
+             <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                 <svg class="h-10 w-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+             </div>
+             <h3 class="text-xl font-bold text-gray-900">Thank You!</h3>
+             <p class="text-gray-600 mt-2">Your acceptance has been received. Your travel consultant will be in touch shortly.</p>
+         </div>
+     </div>
+ </div>
+
+
+ <div id="net-rates-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="flex justify-between items-center border-b pb-4 mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Itinerary Pricing Breakup (Consultant Only)</h3>
+            <button onclick="document.getElementById('net-rates-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"> ✕ </button>
+        </div>
+        <div id="net-rates-content" class="overflow-y-auto pr-2 space-y-4"></div>
+        <div class="flex justify-end pt-4 border-t mt-4">
+            <button onclick="document.getElementById('net-rates-modal').classList.add('hidden')" class="px-6 py-2 bg-gray-200 text-gray-800 font-bold rounded-lg hover:bg-gray-300">Close Window</button>
+        </div>
+    </div>
+ </div>
+
+
+</body>
+</html>
+
+
+

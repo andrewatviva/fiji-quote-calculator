@@ -1,0 +1,150 @@
+<style>
+  body {
+    font-family: 'Inter', sans-serif;
+  }
+
+
+  .pikaday-table .pika-day.is-selected {
+    background-color: #3b82f6 !important;
+  }
+
+
+  .loader {
+    border-top-color: #3498db;
+    animation: spinner 1.5s linear infinite;
+  }
+
+
+  @keyframes spinner {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+
+  /* Styles for the modal */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+
+  .modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    width: 90%;
+    max-width: 550px;
+    /* Increased width for search modal */
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+
+
+  /* Styles for PDF generation container */
+  #pdf-content {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 210mm;
+    /* A4 width */
+  }
+
+
+  /* Styles for drag-and-drop reordering */
+  .reorder-item {
+    cursor: move;
+    user-select: none;
+  }
+
+
+  .reorder-item.dragging {
+    opacity: 0.5;
+    background-color: #e0e7ff;
+  }
+
+
+  .pdf-section {
+    page-break-inside: avoid;
+  }
+
+
+  /* Style for saved quote list */
+  .saved-quote-item:hover {
+    background-color: #f3f4f6;
+  }
+
+
+  /* --- NEW: Styles for Autocomplete --- */
+  .autocomplete-results {
+    position: absolute;
+    border: 1px solid #d1d5db; /* Tailwind's gray-300 */
+    background-color: white;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100; /* Ensure it appears above other elements */
+    border-radius: 0.5rem; /* rounded-lg */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-top: 0.25rem; /* mt-1 */
+  }
+
+
+  .autocomplete-item {
+    padding: 0.75rem 1rem; /* p-3 */
+    cursor: pointer;
+    font-size: 0.875rem; /* text-sm */
+  }
+
+
+  .autocomplete-item:hover,
+  .autocomplete-item.active {
+    background-color: #eff6ff; /* Tailwind's blue-50 */
+  }
+
+
+  .autocomplete-item strong {
+    font-weight: 600; /* font-semibold */
+    color: #2563eb; /* Tailwind's blue-600 */
+  }
+
+
+  #net-rates-content thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f3f4f6;
+  }
+
+
+  /* --- NEW: UI Modernization Overrides --- */
+  /* Ensure Datepickers float above the new fixed sidebar layout */
+  .pika-single {
+    z-index: 9999 !important;
+  }
+ 
+  /* Ensure Autocomplete dropdowns float above everything */
+  .autocomplete-results {
+    z-index: 9999 !important;
+  }
+ 
+  /* Smooth transition for accordion icons */
+  .transition-transform {
+    transition-property: transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
+  }
+</style>
+
+
+
