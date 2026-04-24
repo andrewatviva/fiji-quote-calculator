@@ -452,6 +452,7 @@ function handleAcceptanceSubmit() {
                          	</p>
                      	</div>
                      	${paymentHtml}
+                     	<button onclick="document.getElementById('customer-acceptance-modal').classList.add('hidden')" class="mt-6 w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition">Return to Quote</button>
                 	`;
             	} else {
                 	// --- STANDARD SUCCESS UI ---
@@ -460,8 +461,9 @@ function handleAcceptanceSubmit() {
                          	<svg class="h-10 w-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                      	</div>
                      	<h3 class="text-xl font-bold text-gray-900">Thank You!</h3>
-                     	<p class="text-gray-600 mt-2">Your acceptance has been received. Your travel consultant will review and confirm everything and be in touch shortly.</p>
+                     	<p class="text-gray-600 mt-2">Your acceptance has been received. Your travel consultant will review and confirm everything and be in touch shortly. If anything quoted is no longer available your consultant will provide alternative options.</p>
                      	${paymentHtml}
+                     	<button onclick="document.getElementById('customer-acceptance-modal').classList.add('hidden')" class="mt-6 w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition">Return to Quote</button>
                 	`;
             	}
             	
@@ -3235,9 +3237,7 @@ async function generatePDF(consultant, itemOrder) {
         const { jsPDF } = window.jspdf;
        
         // !!! PASTE YOUR WEB APP URL HERE !!!
-        const MANUAL_WEB_APP_URL = "https://script.google.com/a/macros/travelwithviva.com/s/AKfycbzRUu6A5n27Wzs2cQUA8ZpANhIptDNWz86m6VA9aCMyUgeYBx_iRr_OvFFRZb70lxWq/exec";
- 
-        let appUrl = MANUAL_WEB_APP_URL || state.webAppUrl;
+        let appUrl = state.webAppUrl;
         if (!appUrl) {
              console.warn("Web App URL missing.");
              appUrl = "https://script.google.com";
@@ -5096,6 +5096,30 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
     main();
     function showNetRatesBreakdown() {
     const sectors = getSortedItineraryEvents();
+    const bookingFee = parseFloat(ui.inputs.bookingFee.value) || 0;
+    const discountAmount = parseFloat(ui.inputs.discountAmount.value) || 0;
+    const discountReason = ui.inputs.discountReason.value.trim();
+
+    const makeRow = (dateStr, title, gross, comm, nett) => {
+        const grossHtml = gross < 0
+            ? `<span class="text-red-600">-$${formatNumberWithCommas(Math.abs(gross).toFixed(2))}</span>`
+            : `$${formatNumberWithCommas(gross.toFixed(2))}`;
+        const commHtml = comm < 0
+            ? `<span class="text-red-500">-$${formatNumberWithCommas(Math.abs(comm).toFixed(2))}</span>`
+            : `<span class="text-green-600">-$${formatNumberWithCommas(comm.toFixed(2))}</span>`;
+        return `
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="p-3 border">
+                    <span class="text-[10px] font-bold text-gray-400 block uppercase">${dateStr}</span>
+                    <span class="text-gray-800">${title}</span>
+                </td>
+                <td class="p-3 border text-right font-medium">${grossHtml}</td>
+                <td class="p-3 border text-right font-medium">${commHtml}</td>
+                <td class="p-3 border text-right font-bold text-blue-700 bg-blue-50/50">$${formatNumberWithCommas(nett.toFixed(2))}</td>
+            </tr>
+        `;
+    };
+
     let html = `
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left border-collapse border border-gray-200">
@@ -5109,20 +5133,31 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             	</thead>
             	<tbody class="divide-y divide-gray-200">
     `;
- 
+
     sectors.forEach(sector => {
-        let gross = 0;
-        let nett = 0;
-        let title = "";
- 
+        const dateStr = sector.date.isValid() ? sector.date.format('DD MMM YYYY') : 'Date TBA';
+
         if (sector.type.includes('hotel-checkin')) {
             const result = calculateStayCost(sector.data.index, sector.data.selectedSpecial);
             if (result) {
-            	gross = result.special.accomGross;
-            	nett = result.special.accomNett;
+                const accomGross = result.special.accomGross;
+                const accomNett = result.special.accomNett;
+                if (accomGross > 0 || accomNett > 0) {
+                    html += makeRow(dateStr, `<strong>Hotel:</strong> ${sector.data.hotelName}`, accomGross, accomGross - accomNett, accomNett);
+                }
+                const mealFjdNett = result.special.mealFjdNett;
+                if (mealFjdNett > 0) {
+                    const mealAudNett = (mealFjdNett * (1 + config.rates.FIJI_TAX)) / config.rates.AUD_TO_FJD;
+                    const mealAudGross = roundUp(mealAudNett / config.rates.MEAL_MARKUP_DIVISOR);
+                    html += makeRow('', `<strong>Meal Plan:</strong> ${sector.data.hotelName}`, mealAudGross, mealAudGross - mealAudNett, mealAudNett);
+                }
             }
-            title = `<strong>Hotel:</strong> ${sector.data.hotelName}`;
-        } else if (sector.type === 'transfer') {
+            return;
+        }
+
+        let gross = 0, nett = 0, title = '';
+
+        if (sector.type === 'transfer') {
             const allTransfers = sectors.filter(s => s.type === 'transfer');
             const idx = allTransfers.indexOf(sector) + 1;
             gross = parseFloat(document.getElementById(`transfer-gross-price-${idx}`)?.value || 0);
@@ -5143,34 +5178,32 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             nett = parseFloat(ui.weddingPackage.nettPriceInput.value) || 0;
             title = `<strong>Wedding:</strong> ${sector.data.name}`;
         }
- 
+
         if (gross > 0 || nett > 0) {
-            const comm = gross - nett;
-            const dateStr = sector.date.isValid() ? sector.date.format('DD MMM YYYY') : 'Date TBA';
-            html += `
-            	<tr class="hover:bg-gray-50 transition-colors">
-                	<td class="p-3 border">
-                    	<span class="text-[10px] font-bold text-gray-400 block uppercase">${dateStr}</span>
-                    	<span class="text-gray-800">${title}</span>
-                	</td>
-                	<td class="p-3 border text-right text-gray-600 font-medium">$${formatNumberWithCommas(gross.toFixed(2))}</td>
-                	<td class="p-3 border text-right text-green-600 font-medium">-$${formatNumberWithCommas(comm.toFixed(2))}</td>
-                	<td class="p-3 border text-right font-bold text-blue-700 bg-blue-50/50">$${formatNumberWithCommas(nett.toFixed(2))}</td>
-            	</tr>
-            `;
+            html += makeRow(dateStr, title, gross, gross - nett, nett);
         }
     });
- 
+
+    if (bookingFee > 0) {
+        html += makeRow('', '<strong>Booking Fee</strong>', bookingFee, bookingFee, 0);
+    }
+
+    if (discountAmount > 0) {
+        const label = `<strong>Discount</strong>${discountReason ? `: ${discountReason}` : ''}`;
+        html += makeRow('', label, -discountAmount, -discountAmount, 0);
+    }
+
     const totalGrossVal = parseFloat(document.getElementById('aud-gross-price').textContent.replace(/[^\d.-]/g, '')) || 0;
     const totalNettVal = parseFloat(document.getElementById('aud-nett-price').textContent.replace(/[^\d.-]/g, '')) || 0;
-    const totalCommVal = totalGrossVal - totalNettVal;
- 
+    const totalSellVal = totalGrossVal - discountAmount;
+    const totalCommVal = totalSellVal - totalNettVal;
+
     html += `
             	</tbody>
             	<tfoot class="bg-gray-800 text-white">
                 	<tr>
                     	<td class="p-3 border font-bold">TOTALS</td>
-                    	<td class="p-3 border text-right font-bold">$${formatNumberWithCommas(totalGrossVal.toFixed(2))}</td>
+                    	<td class="p-3 border text-right font-bold">$${formatNumberWithCommas(totalSellVal.toFixed(2))}</td>
                     	<td class="p-3 border text-right font-bold text-green-400">-$${formatNumberWithCommas(totalCommVal.toFixed(2))}</td>
                     	<td class="p-3 border text-right font-bold text-blue-300">$${formatNumberWithCommas(totalNettVal.toFixed(2))}</td>
                 	</tr>
@@ -5179,7 +5212,7 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
         </div>
         <p class="text-[10px] text-gray-400 mt-2 italic">* Amounts shown include relevant Fiji taxes and are converted at the current exchange rate (${config.rates.AUD_TO_FJD}).</p>
     `;
- 
+
     ui.netRatesModal.content.innerHTML = html;
     ui.netRatesModal.container.classList.remove('hidden');
 }
