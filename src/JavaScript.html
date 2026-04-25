@@ -329,8 +329,8 @@ function checkUrlForAcceptance() {
             	populateForm(quoteData, quoteId);
  
             	// Wait a brief moment for calculations to finish, then render the Full Web Quote
-            	setTimeout(() => {
-                    renderWebQuoteView(quoteData, quoteId, preSelectedOption);
+            	setTimeout(async () => {
+                    await renderWebQuoteView(quoteData, quoteId, preSelectedOption);
             	}, 500);
  
             }).getQuote(quoteId);
@@ -4846,7 +4846,7 @@ if (overview.saleType === 'B2B') {
         }
 	}
 }
-function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
+async function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
         // 0. FORCE CALCULATION to ensure prices in DOM are up to date
         calculateCost();
  
@@ -4955,15 +4955,34 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
              html += `<div class="p-4 bg-white rounded-lg border border-gray-200 text-gray-500 italic">No specific itinerary details loaded.</div>`;
         }
 
-        const getDriveDirectImageUrl = (url) => {
-            if (!url) return null;
-            const idMatch =
-                url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
-                url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/) ||
-                url.match(/drive\.google\.com\/[^?]*[?&]id=([a-zA-Z0-9_-]+)/) ||
-                url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
-            return idMatch ? 'https://drive.google.com/uc?export=view&id=' + idMatch[1] : url;
-        };
+        // Build hotel image map for the online view.
+        // - Regular HTTPS URLs: use directly (browser fetches them fine, no proxy needed).
+        // - Google Drive URLs: must proxy through server (browsers can't embed Drive links directly).
+        const verifiedHotelImages = {};
+        const isDriveUrl = (url) => url && (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com'));
+        const driveImageFetches = [];
+
+        events.filter(e => e.type === 'hotel-checkin').forEach(event => {
+            const hotelName = event.data.hotelName;
+            const url = state.conditionsData[hotelName]?.imageLink;
+            if (!url) return;
+            if (isDriveUrl(url)) {
+                // Drive links need server-side proxy
+                driveImageFetches.push(new Promise(resolve => {
+                    google.script.run
+                        .withSuccessHandler(base64 => { verifiedHotelImages[hotelName] = base64 || null; resolve(); })
+                        .withFailureHandler(() => { verifiedHotelImages[hotelName] = null; resolve(); })
+                        .getImageAsBase64(url);
+                }));
+            } else {
+                // Regular URL: browser can load it directly
+                verifiedHotelImages[hotelName] = url;
+            }
+        });
+
+        if (driveImageFetches.length > 0) {
+            await Promise.all(driveImageFetches);
+        }
 
         events.forEach(event => {
             let icon = '';
@@ -4986,7 +5005,7 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             	if (event.data.checkout && event.data.checkin) {
                  	nights = moment(event.data.checkout, config.dateFormat).diff(moment(event.data.checkin, config.dateFormat), 'days');
             	}
-            	const imageLink = getDriveDirectImageUrl(state.conditionsData[event.data.hotelName]?.imageLink || null);
+            	const imageLink = verifiedHotelImages[event.data.hotelName] || null;
             	let roomsHtml = '';
             	const numRooms = parseInt(document.getElementById(`num-rooms-${event.data.index}`).value) || 0;
             	for (let r = 1; r <= numRooms; r++) {

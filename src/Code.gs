@@ -581,7 +581,6 @@ function getImageAsBase64(url) {
   try {
     let blob;
 
-    // Only treat as Google Drive if the URL is actually a Drive/GCS domain
     const driveId = (
       url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
       url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/) ||
@@ -617,6 +616,76 @@ function getImageAsBase64(url) {
   } catch (e) {
     Logger.log('getImageAsBase64 error for ' + url + ': ' + e);
     return null;
+  }
+}
+
+/**
+ * RUN THIS IN APPS SCRIPT EDITOR TO SEE WHAT IMAGE LINKS ARE STORED IN THE CONDITIONS SHEET.
+ * Select this function from the dropdown and click Run, then check Execution Log.
+ */
+function DEBUG_listConditionsImageLinks() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName('Conditions');
+  if (!sheet) { Logger.log('No Conditions sheet found!'); return; }
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const hotelIdx = headers.indexOf('Hotel');
+  const imgIdx = headers.indexOf('ImageLink');
+
+  Logger.log('=== Conditions Sheet: Hotel Names & Image Links ===');
+  Logger.log('Hotel column index: ' + hotelIdx + ', ImageLink column index: ' + imgIdx);
+
+  if (hotelIdx === -1) { Logger.log('ERROR: No "Hotel" column found. Headers: ' + headers.join(', ')); return; }
+  if (imgIdx === -1) { Logger.log('ERROR: No "ImageLink" column found. Headers: ' + headers.join(', ')); return; }
+
+  for (let i = 1; i < data.length; i++) {
+    const hotelName = data[i][hotelIdx];
+    const imageLink = data[i][imgIdx];
+    if (hotelName) {
+      Logger.log(`Row ${i+1}: Hotel="${hotelName}" | ImageLink="${imageLink || '(empty)'}"`);
+    }
+  }
+  Logger.log('=== End ===');
+}
+
+/**
+ * RUN THIS IN APPS SCRIPT EDITOR TO DIAGNOSE IMAGE LOADING ISSUES.
+ * Select this function from the dropdown and click Run, then check Execution Log.
+ */
+function DEBUG_testHotelImage() {
+  const testUrl = 'https://drive.google.com/file/d/1f3-BchxWdZz8h7guG_k1g-7KaiBoXzuM/view?usp=drive_link';
+
+  Logger.log('=== Hotel Image Debug Test ===');
+  Logger.log('URL: ' + testUrl);
+
+  // Step 1: Extract Drive ID
+  const driveId = (
+    testUrl.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+    testUrl.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/)
+  )?.[1];
+  Logger.log('Extracted Drive ID: ' + driveId);
+
+  if (!driveId) {
+    Logger.log('FAIL: Could not extract Drive ID from URL');
+    return;
+  }
+
+  // Step 2: Try to get file from Drive
+  try {
+    const file = DriveApp.getFileById(driveId);
+    Logger.log('File name: ' + file.getName());
+    Logger.log('File MIME type: ' + file.getMimeType());
+    Logger.log('File size: ' + file.getSize() + ' bytes');
+    Logger.log('File sharing: ' + file.getSharingAccess());
+
+    const blob = file.getBlob();
+    Logger.log('Blob content type: ' + blob.getContentType());
+    Logger.log('Blob size: ' + blob.getBytes().length + ' bytes');
+    Logger.log('SUCCESS: Image loaded from Drive OK');
+  } catch (e) {
+    Logger.log('FAIL: DriveApp error - ' + e.toString());
+    Logger.log('This usually means the file ID is wrong or the script cannot access this file.');
   }
 }
 
