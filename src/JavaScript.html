@@ -3994,7 +3994,7 @@ async function generatePDF(consultant, itemOrder) {
             roomDetailsHtml += `</div>`;
         }
         const imageLink = verifiedHotelImages[data.hotelName] || null;
-        const imageBannerHtml = imageLink ? `<div style="height: 160px; overflow: hidden;"><img src="${imageLink}" style="width: 100%; height: auto; display: block;"/></div>` : '';
+        const imageBannerHtml = imageLink ? `<div style="height: 220px; overflow: hidden;"><img src="${imageLink}" style="width: 100%; height: auto; display: block;"/></div>` : '';
         return `<div>${imageBannerHtml}<div style="display: flex; align-items: stretch;"><div style="width: 4px; background-color: #0A2540; flex-shrink: 0;"></div><div style="padding: 14px 18px; flex-grow: 1;"><p style="margin: 0 0 4px; font-size: 10px; font-weight: 700; color: #0A2540; text-transform: uppercase; letter-spacing: 1px;">Check-in &middot; ${moment(data.checkin, 'DD-MM-YYYY').format('ddd, D MMMM YYYY')}</p><p style="margin: 0; font-size: 17px; font-weight: 700; color: #0A2540;">${data.hotelName}</p><p style="margin: 4px 0 0; font-size: 13px; color: #64748B;">${nights} Night${nights !== 1 ? 's' : ''} &middot; Check-out ${moment(data.checkout, 'DD-MM-YYYY').format('ddd, D MMMM')}</p>${roomDetailsHtml}</div></div></div>`;
     }
  
