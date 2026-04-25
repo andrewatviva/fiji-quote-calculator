@@ -3665,7 +3665,7 @@ async function generatePDF(consultant, itemOrder) {
  
             if (y + 35 > pageBreakThreshold) {
             	pdf.addPage();
-            	y = margin;
+            	y = contentStartY;
             }
  
             const quoteRef = state.currentQuoteId || 'New Quote';
@@ -3720,7 +3720,7 @@ async function generatePDF(consultant, itemOrder) {
             	const separatorHeight = 12;
             	if (y + separatorHeight > pageBreakThreshold) {
                 	pdf.addPage();
-                	y = margin;
+                	y = contentStartY;
             	} else {
                 	y += 6;
                 	pdf.setDrawColor(226, 232, 240); // Slate-200
@@ -4955,10 +4955,15 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
              html += `<div class="p-4 bg-white rounded-lg border border-gray-200 text-gray-500 italic">No specific itinerary details loaded.</div>`;
         }
 
-        const allHotelsHaveImages = (() => {
-            const hotelEvents = events.filter(e => e.type === 'hotel-checkin');
-            return hotelEvents.length > 0 && hotelEvents.every(e => !!(state.conditionsData[e.data.hotelName]?.imageLink));
-        })();
+        const getDriveDirectImageUrl = (url) => {
+            if (!url) return null;
+            const idMatch =
+                url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+                url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/) ||
+                url.match(/drive\.google\.com\/[^?]*[?&]id=([a-zA-Z0-9_-]+)/) ||
+                url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+            return idMatch ? 'https://drive.google.com/uc?export=view&id=' + idMatch[1] : url;
+        };
 
         events.forEach(event => {
             let icon = '';
@@ -4981,7 +4986,7 @@ function renderWebQuoteView(quoteData, quoteId, preSelectedOption) {
             	if (event.data.checkout && event.data.checkin) {
                  	nights = moment(event.data.checkout, config.dateFormat).diff(moment(event.data.checkin, config.dateFormat), 'days');
             	}
-            	const imageLink = allHotelsHaveImages ? (state.conditionsData[event.data.hotelName]?.imageLink || null) : null;
+            	const imageLink = getDriveDirectImageUrl(state.conditionsData[event.data.hotelName]?.imageLink || null);
             	let roomsHtml = '';
             	const numRooms = parseInt(document.getElementById(`num-rooms-${event.data.index}`).value) || 0;
             	for (let r = 1; r <= numRooms; r++) {

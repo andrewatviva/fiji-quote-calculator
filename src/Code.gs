@@ -72,7 +72,7 @@ function doGet(e) {
     const masterCalcsSheet = ss.getSheetByName('MasterCalcs');
     const masterCalcsData = masterCalcsSheet ? getMasterCalcs(masterCalcsSheet) : {};
     masterCalcsData.TERMS_AND_CONDITIONS = 'https://www.vivatravel.au/about-us/terms-and-conditions/';
-    masterCalcsData.VIVA_LOGO_URL = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQscvyid2gnP2Hbe_EZt0qFTV_OJbPugtjc3g&s';
+    masterCalcsData.VIVA_LOGO_URL = 'https://vivatravel.au/wp-content/uploads/Layer-2.svg';
 
     // Create the payload
     const payload = {
@@ -568,28 +568,51 @@ function AUTHORIZE_EMAIL_HERE() {
   Logger.log("Email authorization successful. You can now use the app.");
 }
 
+function testFetchAuth() {
+  try {
+    const response = UrlFetchApp.fetch('https://vivatravel.au/wp-content/uploads/Layer-2.svg', { muteHttpExceptions: true });
+    Logger.log('SUCCESS - status: ' + response.getResponseCode() + ', type: ' + response.getBlob().getContentType());
+  } catch(e) {
+    Logger.log('FAILED: ' + e);
+  }
+}
+
 function getImageAsBase64(url) {
   try {
     let blob;
 
-    // Extract Google Drive file ID from any common Drive URL format
+    // Only treat as Google Drive if the URL is actually a Drive/GCS domain
     const driveId = (
       url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
       url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/) ||
-      url.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+      url.match(/drive\.google\.com\/[^?]*[?&]id=([a-zA-Z0-9_-]+)/) ||
       url.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/)
     )?.[1];
 
     if (driveId) {
       blob = DriveApp.getFileById(driveId).getBlob();
     } else {
-      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
-      if (response.getResponseCode() !== 200) return null;
+      const response = UrlFetchApp.fetch(url, {
+        muteHttpExceptions: true,
+        followRedirects: true,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+        }
+      });
+      const code = response.getResponseCode();
+      if (code !== 200) {
+        Logger.log('getImageAsBase64 HTTP ' + code + ' for: ' + url);
+        return null;
+      }
       blob = response.getBlob();
     }
 
     const mimeType = blob.getContentType() || 'image/jpeg';
-    if (!mimeType.startsWith('image/')) return null;
+    if (!mimeType.startsWith('image/')) {
+      Logger.log('getImageAsBase64 non-image type "' + mimeType + '" for: ' + url);
+      return null;
+    }
     return 'data:' + mimeType + ';base64,' + Utilities.base64Encode(blob.getBytes());
   } catch (e) {
     Logger.log('getImageAsBase64 error for ' + url + ': ' + e);
